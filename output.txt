@@ -1,0 +1,1274 @@
+                      ;Here Be Dragons
+                      ;Slipstream 2022
+                      ;Released at NOVA 2022
+                      
+                      ;Code, Graphics and Music: TôBach
+                      ;Music: Nihilazo
+                      ;Graphics: Ando, RaccoonViolet
+                      
+                      ;made over the course of two months, powered by many thunderdome cd's and all-nighters :)
+                      
+                      
+                      ;notes:
+                      ;64x64 = 1024 bytes, start addr = $400, end addr = $800
+                      
+                      ;indirect fuckery cheese:
+                      ;with scroller load all text into one "string", inc scene once == 44, inc index, store away index, init value == 1
+                      ;when scroller needed again, restore index and continue scroller routine, clr init value
+                      
+                      ;scene order
+                      ;------------
+                      ;title screen
+                      ;scroller
+                      ;twister
+                      ;torus thing
+                      ;scroller
+                      ;11 colours thing
+                      ;scroller
+                      ;rotating sheep
+                      ;credits
+                      
+0014                          org 20
+                      
+                      ;varzz go here
+                      
+0014                  sceneval        rmb 1
+                      
+                      ;twister vars
+0015                  twistaddr       rmb 2
+0017                  twistindex      rmb 2
+                      
+                      ;infoscrn vars
+0019                  currchar        rmb 2
+                      
+                      ;scene stuffs
+001B                  scenetim        rmb 2
+                      
+001D                  px1             rmb 1
+001E                  py1             rmb 1
+                      
+                      ;global varzzz
+001F                  scnt            rmb 1
+0020                  vscnt           rmb 1
+0021                  vscnt2          rmb 1
+0022                  xcnt            rmb 1
+0023                  ycnt            rmb 1
+                      
+                      ;scroller vars
+0024                  charaddr        rmb 2
+0026                  stringadd       rmb 2
+0028                  lettercnt       rmb 1
+0029                  letteraddcnt    rmb 1
+002A                  charindex       rmb 2
+002C                  currstring      rmb 2
+002E                  scrolltextval   rmb 1
+002F                  scrollpos       rmb 2
+                      
+                      ;voxel sheep
+0031                  sheepgfxaddr    rmb 2
+                      
+                      ;credits/greets
+0033                  creditsaddr     rmb 2
+                      
+                      ;title
+0035                  titlesrc        rmb 2
+0037                  titledst        rmb 2
+                      
+                      ;multicolour
+0039                  multiclraddrsrc rmb 2
+003B                  multiclraddrdst rmb 2
+                      
+                      ;torus
+003D                  torusgfxaddr    rmb 2
+                      
+1000                          org $1000
+                      
+                      ;main coedz
+1000                  start
+                      
+                              ;lds #$3E00      ;set up stacks
+                              ;ldu #$3D00
+                      
+1000  1A50                    orcc #$50
+                      
+1002  B6FF23                  lda $ff23       ;set cassette output
+1005  8A08                    ora #%00001000
+1007  B7FF23                  sta $ff23
+                      
+100A  863E                    lda #%00111110  ;Bit 3=0 Bit0=Hsync
+100C  B7FF01                  sta $ff01               ;Bit 3  CA2: Select Device (Multiplexor LSB)
+100F  8637                    lda #%00110111  ;Bit 3=0 Bit0=Vsync
+1011  B7FF03                  sta $ff03               ;Bit 3  CB2: Select Device (Multiplexor MSB)
+                      
+                              ;new irq vector
+1014  867E                    lda #$7e        ;hijack with jmp
+1016  B7010C                  sta $010c
+1019  8E10BA                  ldx #irq_start  ;point to our irq routine
+101C  BF010D                  stx $010d
+                      
+101F  1CEF                    andcc #$ef      ;reenable interrupts
+                      
+1021  7F0022                  clr xcnt
+1024  7F0023                  clr ycnt
+1027  7F001F                  clr scnt
+102A  7F0020                  clr vscnt
+102D  7F0021                  clr vscnt2
+1030  7F0014                  clr sceneval
+1033  7F0028                  clr lettercnt
+1036  7F0029                  clr letteraddcnt
+1039  7F002E                  clr scrolltextval
+                      
+103C  8601                    lda #1
+103E  B771AF                  sta twistflag
+1041  B771B0                  sta infoflag
+1044  B771B1                  sta sg12flag
+1047  B771B2                  sta scrollflag1
+104A  B771B4                  sta sheepflag
+104D  B771B5                  sta creditsflag
+1050  B771B6                  sta sgcolflag
+1053  B771B7                  sta sineflag
+1056  B771B8                  sta titleflag
+1059  B771B9                  sta torusflag
+                      
+105C  108E0000                ldy #$0000
+1060  10BF0017                sty twistindex
+1064  10BF0026                sty stringadd
+1068  10BF002A                sty charindex
+106C  10BF001B                sty scenetim
+                      
+1070  8E26E5                  ldx #infostring
+1073  BF0019                  stx currchar
+                      
+1076  8E3F8A                  ldx #char_space
+1079  BF0024                  stx charaddr
+                      
+107C  8E5637                  ldx #sheepgfx
+107F  BF0031                  stx sheepgfxaddr
+                      
+1082  8E69AF                  ldx #creditsgfx
+1085  BF0033                  stx creditsaddr
+                      
+1088  8E0480                  ldx #$480
+108B  BF0026                  stx stringadd
+                      
+108E  8E11FD                  ldx #cygnetsong
+1091  BF0035                  stx titlesrc
+                      
+1094  8E29EA                  ldx #sgcolimg
+1097  BF0039                  stx multiclraddrsrc
+                      
+109A  8E0400                  ldx #$400
+109D  BF0037                  stx titledst
+10A0  BF003B                  stx multiclraddrdst
+                      
+10A3  8E4332                  ldx #string
+10A6  BF002C                  stx currstring
+                      
+10A9  8E4598                  ldx #torusgfx
+10AC  BF003D                  stx torusgfxaddr
+                      
+10AF  8609                    lda #9
+10B1  B70028                  sta lettercnt
+                      
+10B4  7C0014                  inc sceneval
+                      
+                              ;clr $ffd7              ;dangerous :)
+                              ;clr $ffd9              ;even more dangerous :)))
+                      
+10B7                  main
+                              ;do nothing until irq
+10B7  7E10B7                  jmp main
+                      
+                      
+10BA                  irq_start
+10BA  B6FF02                  lda $ff02       ;acknowledge interrupt
+                      
+10BD  7C001F                  inc scnt
+10C0  B6001F                  lda scnt
+10C3  8132                    cmpa #50        ;1 second, current second stored in vscnt
+10C5  2608                    bne skipsreset
+10C7  8600                    lda #0
+10C9  B7001F                  sta scnt
+10CC  7C0020                  inc vscnt
+10CF                  skipsreset
+                      
+                              ;jmp scenecheckend
+                      
+10CF                  framecheck
+                              ;ldx vscnt
+                              ;stx $400
+                              ;lda sceneval
+                              ;sta $402
+10CF                  framecheckend
+                      
+10CF                  scenecheck
+10CF  B60014                  lda sceneval
+10D2  8101                    cmpa #1
+10D4  2605                    bne sskip1
+10D6  BD11BB                  jsr titlescreen
+10D9  205D                    bra scenecheckend
+10DB                  sskip1
+10DB  8102                    cmpa #2
+10DD  2605                    bne sskip2
+10DF  BD3689                  jsr scrollmain
+10E2  2054                    bra scenecheckend
+10E4                  sskip2
+10E4  8103                    cmpa #3
+10E6  2605                    bne sskip3
+10E8  BD26C0                  jsr infoscrnmain
+10EB  204B                    bra scenecheckend
+10ED                  sskip3
+10ED  8104                    cmpa #4
+10EF  2605                    bne sskip4
+10F1  BD269F                  jsr infoscrnend
+10F4  2042                    bra scenecheckend
+10F6                  sskip4
+10F6  8105                    cmpa #5
+10F8  2605                    bne sskip5
+10FA  BD3689                  jsr scrollmain
+10FD  2039                    bra scenecheckend
+10FF                  sskip5
+10FF  8106                    cmpa #6
+1101  2605                    bne sskip6
+1103  BD1DFD                  jsr twistmain
+1106  2030                    bra scenecheckend
+1108                  sskip6
+1108  8107                    cmpa #7
+110A  2605                    bne sskip7
+110C  BD450A                  jsr torusmain
+110F  2027                    bra scenecheckend
+1111                  sskip7
+1111  8108                    cmpa #8
+1113  2605                    bne sskip8
+1115  BD3689                  jsr scrollmain
+1118  201E                    bra scenecheckend
+111A                  sskip8
+111A  8109                    cmpa #9
+111C  2605                    bne sskip9
+111E  BD2998                  jsr multicolour
+1121  2015                    bra scenecheckend
+1123                  sskip9
+1123  810A                    cmpa #10
+1125  2605                    bne sskip10
+1127  BD3689                  jsr scrollmain
+112A  200C                    bra scenecheckend
+112C                  sskip10
+112C  810B                    cmpa #11
+112E  2605                    bne sskip11
+1130  BD55F5                  jsr sheepmain
+1133  2003                    bra scenecheckend
+1135                  sskip11
+                              ;jsr sheepmain
+                              ;jsr torusmain
+1135  BD696A                  jsr credits
+                      
+1138                  scenecheckend
+                              ;jsr scrollmain
+                              ;jsr titlescreen
+                      
+1138                  irq_end
+                              ;ldx vscnt
+                              ;stx $400
+                      
+1138  3B                      rti
+                      
+                      DBGPAL  macro           ;check frame time
+                              lda $ff22
+                              eora #$18
+                              sta $ff22
+                              endm
+                      
+                      ;include all teh filezzz
+1139                          include "init.asm"
+1139                  sgcolinit
+1139  BD119F                  jsr sg12init
+113C  BD2978                  jsr sg12clr
+113F  7F0021                  clr vscnt2
+1142  39                      rts
+                      
+1143                  titleinit
+1143  BD28E5                  jsr pmode1
+1146  CC0000                  ldd #$0000
+1149  BD296D                  jsr clearscrn_1
+114C  7F0021                  clr vscnt2
+114F  39                      rts
+                      
+1150                  creditsinit
+1150  BD28F1                  jsr pmoded
+1153  CC0000                  ldd #$0000
+1156  BD2962                  jsr clearscrn_d
+                              ;jsr testpattern
+1159  7F0021                  clr vscnt2
+115C  7F71B9                  clr torusflag
+115F  39                      rts
+                      
+1160                  scrollinit
+1160  BD2950                  jsr pmodeia
+1163  BD2959                  jsr palswap
+1166  CC8080                  ldd #$8080
+1169  BD2962                  jsr clearscrn_d
+                              ;jsr scroll1
+116C  7F0021                  clr vscnt2
+116F  39                      rts
+                      
+1170                  twistinit
+1170  BD28F1                  jsr pmoded
+1173  BD2959                  jsr palswap
+1176  CC0000                  ldd #$0000
+1179  BD2962                  jsr clearscrn_d
+117C  7F71AF                  clr twistflag
+117F  39                      rts
+                      
+1180                  sheepinit
+1180  BD28F1                  jsr pmoded
+1183  BD2959                  jsr palswap
+1186  CC5555                  ldd #$5555
+1189  BD2962                  jsr clearscrn_d
+118C  7F71B4                  clr sheepflag
+118F  39                      rts
+                      
+1190                  infoscrninit
+1190  BD2950                  jsr pmodeia
+1193  CC8F8F                  ldd #$8F8F
+                              ;ldd #$7f7f
+1196  BD2962                  jsr clearscrn_d
+1199  8600                    lda #0
+119B  B771B0                  sta infoflag
+119E  39                      rts
+                      
+119F                  sg12init
+119F  BD291F                  jsr sg12mode
+11A2  BD2978                  jsr sg12clr
+11A5  BD2959                  jsr palswap
+11A8  39                      rts
+11A9                          include "titlescreen.asm"
+11A9                  cygnetline
+11A9  7F0022                  clr xcnt
+11AC                  cygnetlinelp1
+11AC  EC81                    ldd ,x++
+11AE  EDA1                    std ,y++
+11B0  7C0022                  inc xcnt
+11B3  B60022                  lda xcnt
+11B6  8110                    cmpa #16
+11B8  26F2                    bne cygnetlinelp1
+11BA  39                      rts
+                      
+11BB                  titlescreen
+11BB  B60020                  lda vscnt
+11BE  810C                    cmpa #12
+11C0  2608                    bne skiptitle
+11C2  7F0020                  clr vscnt
+11C5  7C0014                  inc sceneval
+11C8  2032                    bra titlescreenend
+11CA                  skiptitle
+11CA  B671B8                  lda titleflag
+11CD  8100                    cmpa #0
+11CF  2706                    beq dotitle
+11D1  BD1143                  jsr titleinit
+11D4  7F71B8                  clr titleflag
+11D7                  dotitle
+11D7  7C0021                  inc vscnt2
+11DA  B60021                  lda vscnt2
+11DD  8102                    cmpa #2
+11DF  261B                    bne titlescreenend
+11E1  7F0021                  clr vscnt2
+11E4  BE0035                  ldx titlesrc
+11E7  8C1DFD                  cmpx #cygnetsonggfxend
+11EA  2602                    bne cygreset1
+11EC  200E                    bra titlescreenend
+11EE                  cygreset1
+11EE  10BE0037                ldy titledst
+11F2  BD11A9                  jsr cygnetline
+11F5  BF0035                  stx titlesrc
+11F8  10BF0037                sty titledst
+11FC                  titlescreenend
+11FC  39                      rts
+                      
+11FD                  cygnetsong
+11FD  F30011111554500015550555575557D555755555555155555555555555555511CC00444455545000140003C000C000C000C000C0000154000000000000000000F300111555545000145504F155555555555553D1555154555555555555555551CC004445555454445455153C5553FF3305554F115551544000003F000FF00011F3001115401455555455554F553CCC0000553C44555154455554F3C5330C5511CCCCC000000000000055555453F3011144057151555000015557C4F1CC53C511F300111540155545555555554BCC004455515555555555515558C53FFC13F111CC004AAA1555554555F155552B3000111554555555355550000FC17EFC0D3C11F302ABBBAA855545553FC554AFCC0004445515554FC555555558F0D3B3314F10CEAAAAAEEEEA15455553FD52BB300000111545553F155555555F3F14ECCC53D5AAAAAAAAABBB85400055315AEFCC000000455157F1000000000BCC053B3313F0AAAAAAAAAAAEE1555455554ABBF0000000115154C515555153FFF3014ECCCC3CAAAAAAAAAAAAB8555455556AEFCC000000045455551555454CC3FCC053B3314FAAAAAAAAAAAAEE000055552BBFF3300000011515551555153F14FF300CECCC13AAAEFFAAA02ABA55545555AAEFFCCCC000004515500155153F013FCC313B3307AAAAAEFFEAAAAE1553FF15ABBFFF333000001515540555153F00CFF3014ECCC1AAAAAABBFFEAAB95543C55AAEFFFCCCC000045154FFC55452FCF13FCC043B330AAAAAAAABBFFAA85545555AABFFFF3330000151553C555452FFC04FF3010ECCCAAAAAAAAAABBEBA5545554AAEFFFFCCCC0004515551555514B30013FCC043B33AAAAAAAAAAAAAAE5545556AABFFFFF33000011455515555452CC004FF3010ECCAAAAAAAAAAAAAAA1544F02AAEFFFFFCCC00004400015555554B30013FCC043B3AAAAAAAAAAAAAEA554FC56AABFFFFF330000310555555453FF3CC00CEF300CECAAAAAAAAAAAABB855FC556AAEFFFFFCCC000CC457C55514CC0FF30313BCC30FBAAAA88888AAAEF85504552AABBFEAAA3F30333054FC54533C533CC004EF0C0CFAAAAA22222AABBE554454AAAAFFFFFCCC00CFF3153F1453F3134F30013BC0313AAAAA88554AAAFE554452EAAABFFFF333033EC04553D453FCCC53CC004EF0017AAABA045552ABBE15445BEABAAFFEAABCCCFAF351555456CFF054F30003BC007AAAAFA15556AAFF95444BAAEEABFFFF3333EB8011555514BCC0130FC030EC000AAAABEA1556AABE85445AEABAEAFFFFCCCFAEF3C15001052F300C53C007FF000AAAAAFAA154AAFBE5444BAAABFABFFFFFFEBBB3F15151414BCC3054F00F5F000AAAAAAAA855AAAFE5445AAAAABEAFBFEFEAAAEFFD51515052F30017FC307FC00AAAAAAAFA15AAEBE5444AAAAAABABF33EABBABBFD51511414BCC00C4C00D4F00AAAAAABEA952AAFE5445AAAAAAAAABFEAAAAAA3CD515000002F3000D30005300ABAAAABAE856ABBE5444AAEA82AAAAFAEAAC2273D515551414BCC0313CC057C0A80AAAABFA54AAA85445AABA0AE2AAAAA8B3483CD5155515052F3000CF3014C0A300AAAFFE552AA15445AAEE8280AAAAA16D2273D5155545414BCC0F1FCC05F0AC004AABFE1552855445AABBA002AAFEAA148830D51554555052F3F013300530A30012AEFF9555555445BAEEAAAABBF3AABBB073C00001115414BCC017CC01708C0046ABFF9554105445FEBFFEAAABCCAAE3003E1555545055052F3004F3014CB30010AEFE8550001444FAEFEAAABBF3EBBBC07B0000154400000BCC053CC05C8C0044ABBBA550001457FABFAABEEFFCECEF037E5555545145505A30017F3054B30011AAAFE550001542CAFAABFAAFF0EF0FCC7800005115515412CC004CC0108C00442ABFE55400545A9ABFFFEAAFFC38C0F13D55545455545516F3005F3000B300112ABFE5550155421AEFFFEBEFF0CF3000F800045455551516BCC013C00C8C00444AAF85554554555ABFFFABFFFF3ECC04ED55445455551504BF0017F03FF3001112AA955545554552AFFEBAFFFFFB3313B000445455550505BCC004C0CCCC004444A8555545545556ABFAEEAFFFACFCCEE555555401554545AF00000000F300111555555545544556AAFBBBAAAAB33F3FA1444455545545452CC0000000CC00444555540000005402ABEAFEEAABCC4FFE85000015501545416F003F0C00F300111555545555544456BBEBBFBBEB3113F395000015505541416BC3CC0000CC00444555544000004452AFEAEFFBBBC444FC95000015501551414B30300000F30011155554455554445ABAEABBFEAF3103F3D5000015505551415BC0000000CC0044455554455554445AAEEEAEFFF0C0FFCC95000015501551514BF0000000F33300000000455554445AAAEFAAAABFFF3732C1444455545551515BCC000000CC0044455555455554444AAEEEEFB0871CC74215555554015551515B30000000F33300000000055554446AEBEBAFC1D5171F16C0004454555551515BCC000000CC0044455545555554442AAEEBBBBFB331DC5215554454555551505AF3000000F3001115554555555444AAEBBAAC31D45DF11F000005545555545052CCC00000CC00444555455554144AABBAFBAA20874F0C5B155154545555545456F3300000F300111555455540542AAAEBBEFAAAAFF0714BD54155545555545452FCC00000CC0044455545540552AAABBAEFAFFCCCCFC57BC10005545555545016BF300000F3001115555550152AAAAAEABBBAAAFFFC5520C54145545555545514BCCC0000CC00444555454154AAAAABBAAEEEE3331154E0F55145545555515505BF300000B30011155555054AAAAAAEEAABFBFCCC4553B0F55545545555505505AFCC0000AC0044444544552AAABAABBAEAFFFFF0115E313000000000000010012F330000AB001115545552AAAEEEAEEBABBFFBBF04483D7155544454555055416BCC0000A80AAAA855552AABBBBABBFAEAAEEEEEF0E8414D55544454555155414BF30000AAAAAAAAA154AAEEEEEAAFFBBAAAAABBBFA01C4D555444545555515052CC0000AAAEEEEEAAAAABBBBBBABBEAEEAAAAAAAA00435C555444545555505414B30000AAABBBBAABBAAEEEEEEAEFEBBEBBAAAABCC01053555444545555541515ACC000AAAAAAAAAEEEEABBBBBABFEAFFAEEEEFF30047131554445400000400002B3000AAAAAAAAABBBBAAAEEEAEFEBFFABBBFFCC0114D4C554445555555551514BCC00AAAAAAAAAAAEEEEAAAABBFEEFFEEFFFFF30044143154440000000000000AFC00AAAAAAAAAAAABBBAAAAAEFEBFFEBBFFFCC0115C50D544555555555555152F300AAAAAAAAAAAAAEEEEAAAABEFFFFAFFFF300045051C544555555555555156FF00AAAAAAAAAAAAAABBBBAAAAABFFFABFFCCC01154503144555555555555152F3C0A59A9596A5959695E6999AAAABFEFFF33000454147C44555555555555156BCC09A9AA6999AA6999A99959AAAAAAEBFFCC001154140F04555500001555154B330959AA69695A6969695959AAAAAAABFF303004551513F0554455550055000BCC0A99AA69AA9A6999A99999AAAAAAAAFCC0CCC11505453F155555555505515AF009695959A96A6999599999AAAAAAAAB303333331055153FC554FFC55555152CC0AAAAAAAAAAAAAAAAAAAA9AAABBABBBBFFCCCCCCFC55553FFFF33330555156F00A0808880A0AA88A288AA9AAAEEEEEEFC0FFFF333FFC5553FCCCCCCCC15156CC08AA2888A8AAA888888AA9AAABBFFFF300444FFFFFFFFC4F33111533301156B0088A2888280AAA28888A955AAEFFFFCC01111103FFFFFFFCC44455550C0154BC088A2888AA8AAA28888AA56AABFFFFF30444445554FFFFF311155555550055B30A080A28082AAA2A280AA9AAAEFFFFCC1111115555554FCC04455555555015AC0AAAAAAAAAAAAAAAAAAAAAAAABFFFF330444444011555555511555555555052F0A2AA828080A54ED5E2A255654FFFFCC1111151000004555555555555555416CC88AA88A2A2A6B24866A66AA7B3FFF330444555554400045555555555555406B3A29582A2A2A6A26A66266AA6F7FFFCC1111555555555515555555555555500BC88AA88A2A2A54E6A666655A54FFFF300444555555555555555555555555440B3A2AA8280A2A6AA6A66666AA613FFFCC1111555555555555550555555555510BCAAAAAAAAAAA6AA4863726AA787FFF304444555555555555550155555555444B39555555555A6AAD5ECCE5566F34FFCC1111555555555555550445555555110BCAAAAAAAAAAAAAAAAAAAAAAABBFFFF304444555555555555550111155544444BF         includebin "gfx/cygnetsong.bin"
+1DFD                  cygnetsonggfxend
+1DFD                          include "twister.asm"
+1DFD                  twistmain
+1DFD  B60020                  lda vscnt
+1E00  8112                    cmpa #18
+1E02  2608                    bne skiptwist
+1E04  7F0020                  clr vscnt
+1E07  7C0014                  inc sceneval
+1E0A  202E                    bra twistend
+1E0C                  skiptwist
+1E0C  B671AF                  lda twistflag
+1E0F  8100                    cmpa #0
+1E11  2706                    beq dotwister
+1E13  BD1170                  jsr twistinit
+1E16  7F71AF                  clr twistflag
+                      
+1E19                  dotwister
+                      
+1E19  10BE0017                ldy twistindex
+1E1D  3121                    leay 1,y
+1E1F  10BF0017                sty twistindex
+                      
+1E23  BD1E50                  jsr calctwistaddr
+1E26  BD1E3B                  jsr loadtwistseg
+                      
+1E29  BE0015                  ldx twistaddr
+1E2C  8C22AF                  cmpx #twistergfxend-16
+1E2F  2606                    bne skipadd
+1E31  8E1EBF                  ldx #twistergfx
+1E34  BF0015                  stx twistaddr
+1E37                  skipadd
+1E37  BD1E75                  jsr copytwist
+1E3A                  twistend
+1E3A  39                      rts
+                      
+                      
+1E3B                  loadtwistseg
+1E3B  BE0015                  ldx twistaddr
+1E3E  108E0400                ldy #$400
+1E42                  loadtwistlp
+1E42  EC81                    ldd ,x++
+1E44  EDA1                    std ,y++
+1E46  108C0410                cmpy #$410
+1E4A  26F6                    bne loadtwistlp
+1E4C  BE0015                  ldx twistaddr
+1E4F  39                      rts
+                      
+                      
+1E50                  calctwistaddr
+1E50  8E1EBF                  ldx #twistergfx
+1E53  10BE0017                ldy twistindex
+1E57  A6A922BF                lda twistsintab,y
+1E5B                  calctwistaddrlp1
+1E5B  81FF                    cmpa #255
+1E5D  260A                    bne skipreset
+1E5F  108E0000                ldy #$0000
+1E63  10BF0017                sty twistindex
+1E67  200B                    bra calcend
+1E69                  skipreset
+1E69  4A                      deca
+1E6A  308810                  leax 16,x
+1E6D  8100                    cmpa #0
+1E6F  26EA                    bne calctwistaddrlp1
+1E71  BF0015                  stx twistaddr
+1E74                  calcend
+1E74  39                      rts
+                      
+                      
+1E75                  copytwist
+1E75  8E07B0                  ldx #$7B0
+1E78  108E07F0                ldy #$7F0
+1E7C  7F0022                  clr xcnt
+1E7F  7F0023                  clr ycnt
+1E82                  copytwistlp
+1E82  EC81                    ldd ,x++
+1E84  EDA1                    std ,y++
+1E86  7C0022                  inc xcnt
+1E89  B60022                  lda xcnt
+1E8C  8108                    cmpa #8
+1E8E  26F2                    bne copytwistlp
+1E90  7F0022                  clr xcnt
+1E93  3088E0                  leax -32,x
+1E96  31A8E0                  leay -32,y
+1E99  7C0023                  inc ycnt
+1E9C  B60023                  lda ycnt
+1E9F  813C                    cmpa #60
+1EA1  26DF                    bne copytwistlp
+1EA3  8E0400                  ldx #$400
+1EA6  108E0410                ldy #$410
+1EAA  7F0022                  clr xcnt
+1EAD  7F0023                  clr ycnt
+1EB0                  copytwistlp2
+1EB0  EC81                    ldd ,x++
+1EB2  EDA1                    std ,y++
+1EB4  7C0022                  inc xcnt
+1EB7  B60022                  lda xcnt
+1EBA  8118                    cmpa #24
+1EBC  26F2                    bne copytwistlp2
+1EBE  39                      rts
+                      
+                      
+1EBF                  twistergfx
+1EBF  00000005AAAAAAAAAAAAAAAAAAAAAAAA0000005556AAAAAAAAAAAAAAAAAAAAA800001555555AAAAAAAAAAAAAAAAAAAA00001555555556AAAAAAAAAAAAAAAAA8000155555555555AAAAAAAAAAAAAAAA000055555555555556AAAAAAAAAAAAA80005555555555555555AAAAAAAAAAA00001555555555555555556AAAAAAAA0000055555555555555555555AAAAAA0000005555555555555555555556AA8000000055555555555555555555555400000000555555555555555555555555400000001555555555555555555555555500000015555555555555555555555555500000015555555555555555555555555540000055555555555555555555555555540000155555555555555555555555555500000155555555555555555555555555400000155555555555555555555555555000000055555555555555555555555554000000055555555555555555555555550000003FD55555555555555555555555000003FFFF55555555555555555555550000FFFFFFFD55555555555555555555000FFFFFFFFFF555555555555555555400FFFFFFFFFFFFD5555555555555555003FFFFFFFFFFFFFF55555555555555000FFFFFFFFFFFFFFFFD555555555554003FFFFFFFFFFFFFFFFFF5555555555000FFFFFFFFFFFFFFFFFFFFD55555540000FFFFFFFFFFFFFFFFFFFFFF5555400000FFFFFFFFFFFFFFFFFFFFFFFD54000000FFFFFFFFFFFFFFFFFFFFFFFFF00000003FFFFFFFFFFFFFFFFFFFFFFFFF0000000FFFFFFFFFFFFFFFFFFFFFFFFFFC000003FFFFFFFFFFFFFFFFFFFFFFFFFFC00000FFFFFFFFFFFFFFFFFFFFFFFFFFFC00003FFFFFFFFFFFFFFFFFFFFFFFFFFF000000FFFFFFFFFFFFFFFFFFFFFFFFFFF000000FFFFFFFFFFFFFFFFFFFFFFFFFFC000000FFFFFFFFFFFFFFFFFFFFFFFFFF00000003FFFFFFFFFFFFFFFFFFFFFFFF000000000FFFFFFFFFFFFFFFFFFFFFFF00000002AABFFFFFFFFFFFFFFFFFFFFF000000AAAAAAFFFFFFFFFFFFFFFFFFFC00000AAAAAAAABFFFFFFFFFFFFFFFFFC0002AAAAAAAAAAAFFFFFFFFFFFFFFFF0002AAAAAAAAAAAAABFFFFFFFFFFFFF0000AAAAAAAAAAAAAAAAFFFFFFFFFFFC0002AAAAAAAAAAAAAAAAABFFFFFFFFC0000AAAAAAAAAAAAAAAAAAAAFFFFFFC00002AAAAAAAAAAAAAAAAAAAAABFFF000000AAAAAAAAAAAAAAAAAAAAAAAAF0000000AAAAAAAAAAAAAAAAAAAAAAAAA8000000AAAAAAAAAAAAAAAAAAAAAAAAAA800000AAAAAAAAAAAAAAAAAAAAAAAAAAA800002AAAAAAAAAAAAAAAAAAAAAAAAAAAA0000AAAAAAAAAAAAAAAAAAAAAAAAAAAAA0000AAAAAAAAAAAAAAAAAAAAAAAAAAAA80002AAAAAAAAAAAAAAAAAAAAAAAAAAAA0000AAAAAAAAAAAAAAAAAAAAAAAAAAAA800002AAAAAAAAAAAAAAAAAAAAAAAAAAA000002AAAAAAAAAAAAAAAAAAAAAAAAAA0000002AAAAAAAAAAAAAAAAAAAAAAAAA         includebin "gfx/twister.bin"
+22BF                  twistergfxend
+                      
+                      
+22BF                  twistsintab     ;sin(i/24)*sin(i/44)
+22BF  20202020202021212122222324242526272728292A2B2C2D2D2E2F30313233333435         fcb 32,32,32,32,32,32,33,33,33,34,34,35,36,36,37,38,39,39,40,41,42,43,44,45,45,46,47,48,49,50,51,51,52,53
+22E1  363637373838393939393A3A3A393939393838383736363534333231302F2E2D2C2A         fcb 54,54,55,55,56,56,57,57,57,57,58,58,58,57,57,57,57,56,56,56,55,54,54,53,52,51,50,49,48,47,46,45,44,42
+2303  2928272524232120201E1D1C1B191817161514131211100F0F0E0E0D0D0C0C0C0C0C         fcb 41,40,39,37,36,35,33,32,32,30,29,28,27,25,24,23,22,21,20,19,18,17,16,15,15,14,14,13,13,12,12,12,12,12
+2325  0B0C0C0C0C0C0D0D0E0E0F0F101011121313141516171718191A1B1B1C1D1D1E1F1F         fcb 11,12,12,12,12,12,13,13,14,14,15,15,16,16,17,18,19,19,20,21,22,23,23,24,25,26,27,27,28,29,29,30,31,31
+2347  2020202020202021212121202020202020201F1E1E1D1C1C1B1A1918171615141312         fcb 32,32,32,32,32,32,32,33,33,33,33,32,32,32,32,32,32,32,31,30,30,29,28,28,27,26,25,24,23,22,21,20,19,18
+2369  11100F0E0D0C0B0B0A090807070605050404040303030303030303030404050506060708090A0B0C0D0E0F         fcb 17,16,15,14,13,12,11,11,10,9,8,7,7,6,5,5,4,4,4,3,3,3,3,3,3,3,3,3,4,4,5,5,6,6,7,8,9,10,11,12,13,14,15
+2394  10111214151617191A1B1D1E1F202022232425262728292A2A2B2C2C2D2D2E2E2E2F         fcb 16,17,18,20,21,22,23,25,26,27,29,30,31,32,32,34,35,36,37,38,39,40,41,42,42,43,44,44,45,45,46,46,46,47
+23B6  2F2F2F2F2F2E2E2E2D2D2D2C2C2B2A2A292828272626252423232221202020201F1E         fcb 47,47,47,47,47,46,46,46,45,45,45,44,44,43,42,42,41,40,40,39,38,38,37,36,35,35,34,33,32,32,32,32,31,30
+23D8  1E1E1D1D1D1C1C1C1C1C1C1C1C1D1D1D1E1E1F1F2020212122232425262728292A2B         fcb 30,30,29,29,29,28,28,28,28,28,28,28,28,29,29,29,30,30,31,31,32,32,33,33,34,35,36,37,38,39,40,41,42,43
+23FA  2D2E2F303132333435363738393A3B3B3C3D3D3E3E3E3F3F3F3F3F3F3F3F3F3E3E3D         fcb 45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,59,60,61,61,62,62,62,63,63,63,63,63,63,63,63,63,62,62,61
+241C  3D3C3C3B3A393837363534333231302F2D2C2B2A292726252423222120201F1E1D1C         fcb 61,60,60,59,58,57,56,55,54,53,52,51,50,49,48,47,45,44,43,42,41,39,38,37,36,35,34,33,32,32,31,30,29,28
+243E  1B1B1A1919181818171717171717171718181819191A1A1B1B1C1C1D1E1F1F202020         fcb 27,27,26,25,25,24,24,24,23,23,23,23,23,23,23,23,24,24,24,25,25,26,26,27,27,28,28,29,30,31,31,32,32,32
+2460  21222323242525262627272828282929292929292929282828272726262524232322         fcb 33,34,35,35,36,37,37,38,38,39,39,40,40,40,41,41,41,41,41,41,41,41,40,40,40,39,39,38,38,37,36,35,35,34
+2482  2120201F1E1D1B1A1918171614131211100E0D0C0B0A090807060505040303020202010101010101         fcb 33,32,32,31,30,29,27,26,25,24,23,22,20,19,18,17,16,14,13,12,11,10,9,8,7,6,5,5,4,3,3,2,2,2,1,1,1,1,1,1
+24AA  0101010202030304040506070808090A0B0C0E0F1011121314151617191A1B1C1D1D1E1F202020         fcb 1,1,1,2,2,3,3,4,4,5,6,7,8,8,9,10,11,12,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,29,30,31,32,32,32
+24D1  212222232323242424242424242424232323222221212020201F1E1E1D1C1C1B1A19         fcb 33,34,34,35,35,35,36,36,36,36,36,36,36,36,36,35,35,35,34,34,33,33,32,32,32,31,30,30,29,28,28,27,26,25
+24F3  1918171616151514141313121212121111111111121212131313141515161718191A         fcb 25,24,23,22,22,21,21,20,20,19,19,18,18,18,18,17,17,17,17,17,18,18,18,19,19,19,20,21,21,22,23,24,25,26
+2515  1B1C1D1E1F2020222324262728292B2C2D2E30313233343536373839393A3B3B3C3C         fcb 27,28,29,30,31,32,32,34,35,36,38,39,40,41,43,44,45,46,48,49,50,51,52,53,54,55,56,57,57,58,59,59,60,60
+2537  3D3D3D3D3D3D3D3D3D3D3C3C3B3B3A3A39383737363534333231302F2E2D2C2B2A29         fcb 61,61,61,61,61,61,61,61,61,61,60,60,59,59,58,58,57,56,55,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41
+2559  28272626252423222221212020202020201F1F1F1F1F202020202020212122222324         fcb 40,39,38,38,37,36,35,34,34,33,33,32,32,32,32,32,32,31,31,31,31,31,32,32,32,32,32,32,33,33,34,34,35,36
+257B  242526272828292A2B2C2C2D2E2F2F30313132323333343434343434343434343433         fcb 36,37,38,39,40,40,41,42,43,44,44,45,46,47,47,48,49,49,50,50,51,51,52,52,52,52,52,52,52,52,52,52,52,51
+259D  3333323131302F2E2E2D2C2B2928272625232221201F1E1C1B1A1917161514121110         fcb 51,51,50,49,49,48,47,46,46,45,44,43,41,40,39,38,37,35,34,33,32,31,30,28,27,26,25,23,22,21,20,18,17,16
+25BF  0F0E0D0C0B0B0A090908080707070706060607070707080808090A0A0B0C0C0D0E0F101011121314         fcb 15,14,13,12,11,11,10,9,9,8,8,7,7,7,7,6,6,6,7,7,7,7,8,8,8,9,10,10,11,12,12,13,14,15,16,16,17,18,19,20
+25E7  1516171818191A1B1B1C1D1D1E1E1F1F2020202020202020202020201F1F1E1E1D1D         fcb 21,22,23,24,24,25,26,27,27,28,29,29,30,30,31,31,32,32,32,32,32,32,32,32,32,32,32,32,31,31,30,30,29,29
+2609  1C1B1B1A19181716161514131211100F0E0E0D0C0B0B0A09090808080707070706060607070707         fcb 28,27,27,26,25,24,23,22,22,21,20,19,18,17,16,15,14,14,13,12,11,11,10,9,9,8,8,8,7,7,7,7,6,6,6,7,7,7,7
+2630  080809090A0B0C0C0D0E0F10121314151618191A1B1D1E1F20212224252627292A2B2C         fcb 8,8,9,9,10,11,12,12,13,14,15,16,18,19,20,21,22,24,25,26,27,29,30,31,32,33,34,36,37,38,39,41,42,43,44
+2653  2D2E2F2F303132323333343434343435343434343433333332323130302F2E2E2D2C         fcb 45,46,47,47,48,49,50,50,51,51,52,52,52,52,52,53,52,52,52,52,52,51,51,51,50,50,49,48,48,47,46,46,45,44
+2675  2B2B2A2928272726252424232222212120FF         fcb 43,43,42,41,40,39,39,38,37,36,36,35,34,34,33,33,32,255
+2687                  twistsintabend
+2687                          include "infoscreen.asm"
+2687                  infoscrn
+2687  8E0400                  ldx #$400
+268A  10BE0019                ldy currchar
+268E                  info1
+268E  A684                    lda ,x
+2690  A1A4                    cmpa ,y
+2692  2701                    beq info2
+2694  4A                      deca
+2695                  info2
+2695  A780                    sta ,x+
+                              ;leax 1,x
+2697  3121                    leay 1,y
+2699  8C0600                  cmpx #$600
+269C  26F0                    bne info1
+269E  39                      rts
+                      
+269F                  infoscrnend
+269F  B60020                  lda vscnt
+26A2  8103                    cmpa #3
+26A4  2608                    bne skipinfoend
+26A6  7F0020                  clr vscnt
+26A9  7C0014                  inc sceneval
+26AC  2011                    bra infoend2
+26AE                  skipinfoend
+26AE  8E0400                  ldx #$400
+26B1                  infoend1
+26B1  A684                    lda ,x
+26B3  8190                    cmpa #144       ;207 = white ;144 = black 2
+26B5  2701                    beq infoskipinc
+26B7  4C                      inca
+26B8                  infoskipinc
+26B8  A780                    sta ,x+
+26BA  8C0600                  cmpx #$600
+26BD  26F2                    bne infoend1
+26BF                  infoend2
+26BF  39                      rts
+                      
+26C0                  infoscrnmain
+26C0  B60020                  lda vscnt
+26C3  810C                    cmpa #12
+26C5  2608                    bne skipinfo
+26C7  7F0020                  clr vscnt
+26CA  7C0014                  inc sceneval
+26CD  2015                    bra endinfo
+26CF                  skipinfo
+26CF  B671B0                  lda infoflag
+26D2  8100                    cmpa #0
+26D4  2706                    beq sceneinfo
+26D6  BD1190                  jsr infoscrninit
+26D9  7F71B0                  clr infoflag
+                              ;jsr palswap
+26DC                  sceneinfo
+26DC  BD2687                  jsr infoscrn
+26DF  2003                    bra endinfo
+26E1                  checkinfoend
+26E1  BD269F                  jsr infoscrnend
+26E4                  endinfo
+26E4  39                      rts
+                      
+26E5                  infostring
+26E5  6060606060606060534F6057484154675360494E604160606060606060606060         fcv "        SO WHAT'S IN A          "
+2705  6060606060606060606060606060606060606060606060606060606060606060         fcv "                                "
+2725  8F8F81868F81828F89868F81838F89868F808A8F8F83828F83828F89838D8F8F         fcb 143,143,129,134,143,129,130,143,137,134,143,129,131,143,137,134,143,128,138,143,143,131,130,143,131,130,143,137,131,141,143,143
+2745  8F8F858A8F81858F81828F85828F858A8F81888F8F8B828F81838F8F898F8F8F         fcb 143,143,133,138,143,129,133,143,129,130,143,133,130,143,133,138,143,129,136,143,143,139,130,143,129,131,143,143,137,143,143,143
+2765  8F8F84898F858A8F858A8F84888F86898F85808F8F8C888F848C8F8F8D8F8F8F         fcb 143,143,132,137,143,133,138,143,133,138,143,132,136,143,134,137,143,133,128,143,143,140,136,143,132,140,143,143,141,143,143,143
+2785  6060606060606060606060606060606060606060606060606060606060606060         fcv "                                "
+27A5  60604D4F544F524F4C4160767870794560435055604060706E78794D485A6060         fcv "  MOTOROLA 6809E CPU @ 0.89MHZ  "
+27C5  57495448604C494D495445446071766D424954604341504142494C4954494553         fcv "WITH LIMITED 16-BIT CAPABILITIES"
+27E5  606060504F57455246554C6041444452455353494E47604D4F44455360606060         fcv "   POWERFUL ADDRESSING MODES    "
+2805  6060606060606060606060606060606060606060606060606060606060606060         fcv "                                "
+2825  6060604D4F544F524F4C4160767874776056444760464F52604746587A606060         fcv "   MOTOROLA 6847 VDG FOR GFX:   "
+2845  60555060544F60727576587179726C60555060544F607460434F4C4F55525360         fcv " UP TO 256X192, UP TO 4 COLOURS "
+2865  607260444F444759604C4F4F4B494E4760434F4C4F526050414C455454455360         fcv " 2 DODGY LOOKING COLOR PALETTES "
+2885  6060606060606060606060606060606060606060606060606060606060606060         fcv "                                "
+28A5  6073724B426052414D6C60766D4249546044414360464F5260534F554E446060         fcv " 32KB RAM, 6-BIT DAC FOR SOUND  "
+28C5  606060607470605945415253604F4C446054484953604D4F4E54486160606060         fcv "    40 YEARS OLD THIS MONTH!    "
+28E5                          include "pmode.asm"
+                      ;pmode routines from chibiakumas - thanks keith! <3
+                      
+28E5                  pmode1  ;128x96
+28E5  BD28FD                  jsr pmodereset
+                              ;     AGGGC---  C=Color (0=Green 1=Orange)
+28E8  86C0                    lda #%11000000
+28EA  B7FF22                  sta $FF22
+28ED  B7FFC5                  sta $FFC4+1 ;SAM V2=1
+28F0  39                      rts
+                      
+28F1                  pmoded
+28F1  BD28FD                  jsr pmodereset
+                                  ; AGGGC---  C=Color (0=Green 1=Orange)
+28F4  8680                    lda #%10000000
+28F6  B7FF22                  sta $FF22
+28F9  B7FFC1                  sta $ffc0+1     ;SAM V0=1
+28FC  39                      rts
+                      
+28FD                  pmodereset
+28FD  B7FFC6                  sta $FFC6       ;Clr ScrBase Bit 0      $0200
+2900  B7FFC8                  sta $FFC8       ;Clr ScrBase Bit 1      $0400
+2903  B7FFCA                  sta $FFCA       ;Clr ScrBase Bit 2      $0800
+2906  B7FFCC                  sta $FFCC       ;Clr ScrBase Bit 3      $1000
+2909  B7FFCE                  sta $FFCE       ;Clr ScrBase Bit 4      $2000
+290C  B7FFD0                  sta $FFD0       ;Clr ScrBase Bit 5      $4000
+290F  B7FFD2                  sta $FFD2       ;Clr ScrBase Bit 6      $8000
+                      
+2912  B7FFC9                  sta $FFC8+1     ;Set ScrBase Bit 1      $0400
+                      
+2915  B7FFC0                  sta $FFC0       ;SAM V0=0
+2918  B7FFC2                  sta $FFC2       ;SAM V1=0
+291B  B7FFC4                  sta $FFC4       ;SAM V2=0
+291E  39                      rts
+                      
+291F                  sg12mode                        ;64x96
+291F  8600                    lda #0
+2921  B7FF22                  sta $FF22
+                      
+2924  B7FFC0                  sta $ffc0
+2927  B7FFC2                  sta $ffc2
+292A  B7FFC5                  sta $ffc5
+292D  39                      rts
+                      
+292E                  scrnbase1
+292E  B7FFC6                  sta $FFC6       ;Clr ScrBase Bit 0      $0200
+2931  B7FFC8                  sta $FFC8       ;Clr ScrBase Bit 1      $0400
+2934  B7FFCA                  sta $FFCA       ;Clr ScrBase Bit 2      $0800
+2937  B7FFCC                  sta $FFCC       ;Clr ScrBase Bit 3      $1000
+293A  B7FFCE                  sta $FFCE       ;Clr ScrBase Bit 4      $2000
+293D  B7FFD0                  sta $FFD0       ;Clr ScrBase Bit 5      $4000
+2940  B7FFD2                  sta $FFD2       ;Clr ScrBase Bit 6      $8000
+2943  B7FFC9                  sta $FFC8+1     ;Set ScrBase Bit 1      $0400
+2946  B7FFC0                  sta $FFC0       ;SAM V0=0
+2949  B7FFC2                  sta $FFC2       ;SAM V1=0
+294C  B7FFC4                  sta $FFC4       ;SAM V2=0
+294F  39                      rts
+                      
+                      ;scrnbase2
+                              ;sta $FFC6      ;Clr ScrBase Bit 0      $0200
+                              ;sta $FFC8      ;Clr ScrBase Bit 1      $0400
+                              ;sta $FFCA      ;Clr ScrBase Bit 2      $0800
+                              ;sta $FFCC      ;Clr ScrBase Bit 3      $1000
+                              ;sta $FFCE      ;Clr ScrBase Bit 4      $2000
+                              ;sta $FFD0      ;Clr ScrBase Bit 5      $4000
+                              ;sta $FFD2      ;Clr ScrBase Bit 6      $8000
+                              ;sta $FFCA+1    ;Set ScrBase Bit 1      $0400
+                              ;sta $FFC0      ;SAM V0=0
+                              ;sta $FFC2      ;SAM V1=0
+                              ;sta $FFC4      ;SAM V2=0
+                              ;rts
+                      
+                      ;swapscreenbase
+                              ;lda scnrbaseval
+                              ;cmpa #0
+                              ;bne skipswap
+                              ;jsr scrnbase1
+                              ;lda #1
+                              ;sta scnrbaseval
+                              ;jmp swapend
+                      ;skipswap
+                              ;lda #0
+                              ;sta scnrbaseval
+                              ;jsr scrnbase2
+                      ;swapend
+                              ;rts
+                      
+2950                  pmodeia
+2950  BD28FD                  jsr pmodereset
+                                      ; AGGGC---      C=Color (0=Green 1=Orange)
+2953  8600                    lda #%00000000
+2955  B7FF22                  sta $FF22
+2958  39                      rts
+                      
+2959                  palswap
+2959  B6FF22                  lda $FF22
+295C  8808                    eora #%00001000 ;Switch CSS color palette
+295E  B7FF22                  sta $FF22
+2961  39                      rts
+                      
+2962                  clearscrn_d
+2962  8E0400                  ldx #$400
+2965                  clearscrn_d_loop
+2965  ED81                    std ,x++
+2967  8C0800                  cmpx #$0800
+296A  26F9                    bne clearscrn_d_loop
+296C  39                      rts
+                      
+296D                  clearscrn_1
+296D  8E0400                  ldx #$400
+2970                  clearscrn_1_loop
+2970  ED81                    std ,x++
+2972  8C1000                  cmpx #$1000
+2975  26F9                    bne clearscrn_1_loop
+2977  39                      rts
+                      
+2978                  sg12clr
+2978  8E0400                  ldx #$400
+297B  CC8080                  ldd #$8080
+297E                  sg12clrlp
+297E  ED81                    std ,x++
+2980  8C1000                  cmpx #$1000
+2983  26F9                    bne sg12clrlp
+2985  39                      rts
+                              ;include "sg12test.asm"
+2986                          include "sgcol.asm"
+2986                  sgcolmain
+2986  7F0022                  clr xcnt
+2989                  sgcolmainlp1
+2989  EC81                    ldd ,x++
+298B  EDA1                    std ,y++
+298D  7C0022                  inc xcnt
+2990  B60022                  lda xcnt
+2993  8110                    cmpa #16
+2995  26F2                    bne sgcolmainlp1
+2997  39                      rts
+                      
+2998                  multicolour
+2998  B60020                  lda vscnt
+299B  8114                    cmpa #20
+299D  2615                    bne skipmulticolour
+299F  7F0020                  clr vscnt
+29A2  7C0014                  inc sceneval
+29A5  BD1160                  jsr scrollinit
+29A8  10BE002A                ldy charindex
+29AC  3121                    leay 1,y
+29AE  10BF002A                sty charindex
+29B2  2035                    bra multicolourend
+29B4                  skipmulticolour
+29B4  B671B6                  lda sgcolflag
+29B7  8100                    cmpa #0
+29B9  2706                    beq dosgcol
+29BB  7F71B6                  clr sgcolflag
+29BE  BD1139                  jsr sgcolinit
+29C1                  dosgcol
+29C1  7C0021                  inc vscnt2
+29C4  B60021                  lda vscnt2
+29C7  8104                    cmpa #4
+29C9  261E                    bne multicolourend
+29CB  7F0021                  clr vscnt2
+29CE  10BE003B                ldy multiclraddrdst
+29D2  108C1000                cmpy #$1000
+29D6  2711                    beq multicolourend
+29D8  BE0039                  ldx multiclraddrsrc
+29DB  10BE003B                ldy multiclraddrdst
+29DF  BD2986                  jsr sgcolmain
+29E2  BF0039                  stx multiclraddrsrc
+29E5  10BF003B                sty multiclraddrdst
+29E9                  multicolourend
+29E9  39                      rts
+                      
+29EA                  sgcolimg
+29EA  FFFFFFFF8080BF60BF60BF60BF606080BFEF8080EFEFEF80CF20CF20CFCF80DFFFFFFF80808080BF60BF606060606080EFBF8080EFEFEFEF80CF2080CFCF808FFFFF8080CF8080BFBF60BF60BF60BF80BFEFBF80EFEFEFEF80208080CFCF80DF9FFF80CF8080808060BF60BF60606080EFBFEF8080EFEFEF80CF8080CFCF808FFFFF8080CFCFCF8080BFBF60BF608080BFEFBFEF80EFEFEF80208080CFCF80DFFFFF808080808080808060BF20808080EFBFEFEF8080EFEF80808080CFCF808FFF808080CFCFCFCFCF80BF2080808080BFEFBFEFEF80EFEF80808080CFCF80DF9F808080208080808080208080808080EFBF80EFEF80EFEF80808080CFCF808FFF80CF80802020CFCF80808080CF8080BFEF80EFEF80EFEF80808080CFCF80DF9F8080CF808080808080808080808080EFBF80808080EFEF80808080CF80808FFF80CF80808020CFCFCF80CFCFCFCF80BFEFBF808080EFEF80808080CF808FDF9F8080CF808080808080808080808080EFBFEF808080EFEF80808080CF80DF8FFF80CF8080802020CFCFCFCFCFCF202080EFBFEF8080EFEF80808080CF808FDF9F8080CF80808080808080808080808080BFEFEF80CF80EF808080CFCF80DFDFFF8080808080802020CFCFCFCF20208080EFBF8020202080808080CFCF808FDF9FFF80CF80808080808080808080808080BFEF8020202080208080CF8080DFDFFFFF8080808080802020CFCFCF20808080EFBF8080202020208080CF80DF8FDF9FFF80CF80808080808080808080808080BFEF8080802020CFCF80CF80DFDFDFFF9F8080808080808080CFCF2020808080EF808080802020CFCFCFCF80DF8FDF9F9F80CF808080808080808080808080808080808080802020CFCF8080DFDFDFFF9F8080CF80808080CFCFCF20808080808080CF2080802020CFCF808FDF8FDF9FFF80CF808080808080808080808080808080202020808020CFCF80DFDFDFDFFF9FFF80CF808080CFCFCF2080CFCF80808080CFCF2080802020CF80DFDF8FDF9F9F9F8080808080808080808080808080808020202020802020CFCF80DFDFDFFF9FFF80CF808080CF802080CFCFCF80808080CFCFCFCF208020CFCF80DFDFDF9FFF9F8080808080808080808080808080808020202020202020CFCF8080DFDFFF9FFF80808080CFCF2080CFCFCFCF80808080CFCFCFCFCFCFCFCFCFCF80DFDF9F9F9F9F8080808080808080808080808080808020202020202020CFCF8080DFFF9F9F9F8080CFCF2020CFCFCFCFCF8080808080CFCFCFCFCFCFCFCFCFCF80DF9F9F9F8080808080808080808080808080808080CF202020202020CFCFCF80DF9F9F9F808080CFCF20CFCFCFCFCFCF80808080808080CFCFCFCFCFCFCFCF80809F9F808080808080808080808080CF808080808080808020202020CFCFCFCF80FF9F8080CFCFCF20CFCFCFCF808080808080808080CF8080CFCFCFCFCFCFCF809F9F80808080808080808080808080808080808080CF8080202020CFCFCFCFCF9F808080CFCF2020CFCFCF808080CF8080808080CF808080CFCFCFCFCFCFCFCF9F80808080808080808080808080CF8080808080CF80808020202020CFCFCFCF808080CFCFCFCFCFCFCF80CF8080CF8080808080CF8080CF8080CFCFCFCFCFCF8080808080808080808080CF808080CF80808080CFCF80CF8080202020CFCFCF802080CFCFCFCFCFCF8080CFCF8080CF8080808080CFCFCF80808080CFCFCFCF808020808080808080808080CF80CFCF8080808080808080808080202020CFCF8020CFCFCFCF202080808080CFCFCF808080808080808080808080802020CFCF208080808080808080808080808080808080808080808080808080802020CFCF8020CFCFCF2020808080808080808080808080808080808080808080802020CF80802080808080808080808080808080808080808080808080808080802020CF8020CFCF2020808080808080808080808080808080808080808080808080202020808080808080808080808080808080808080808080808080808080808020208020202020208080808080808080808080808080CF80808080808080808080208080CF808080808080808080808080CF80808080CF808080808080808080802080CF202020808080808080808080CFCF80808080CF8080808080808080808020CF80CF8080808080808080808080CFCF80808080CFCF8080808080808080808080CF202080808080808080808080CFCF80808080CFCF80808080808080808080CF80208080808080808080808080CFCF8080808080CF8080808080808080808080CF2080808080808080808080CFCFCF8080808080CFCF808080808080808080CF808080808080808080808080CFCF8080CF808080CFCF80808080808080808080CF8080808080808080808080CFCF80CFCFCF808080CF808080808080808080CF802080808080808080808080CFCF8080CF80808080CF80808080808080808080CF2080808080808080808080CFCF80808080808080CF8080808080808080CFCF80CF80808080808080808080CFCF80808080808080CF80808080808080808080CF2020808080808080808080CFCF80808080808080CF8080808080808080CF8080808080808080808080808080CF808080808080CFCF80808080808020CF8080809F808080DF80808080808080CFCF8080808080CF80808080808080CF20CF8080FF8080806080808080808080CFCF8080808080808080808080808020CFAF80609F80808FDF80808080808080CFCF80808080808080808080808020CFAFCF8060FF80808F60808080808080808080808080808080808080808080CFCFCFAF80809F808080DF808080808080808080BFBFBFBF80808080808080CF20CFAFCF2080FF80808060808080808080808080BFBFBFBF8080808080808020CFAFCFAF80809F808080DF8080808080808080BFBFBFBFBFBF808080808020CFAFCFAFAF8080FF808080608080808080808080BFBFBFBFBFBF8080808080CF20CFAFCFAF80809F808080DF8080808080808080CFBFBFBFBFCF80808080CFCFCFAFAFAFAF8080FF808080608080808080808080CFBFBFBFBFCF8080802020CFCFCFAFCFAF80809F808080DF8020808080808080CFBFBFBFCF8080808020CFAFCFAFCFAFAF8080FF8080806080CF80808080808080CFBFBFCF80808080CFCFCFAFCFAFAFAF80809F808080DF802020808080808080CFBFBFCF80808020CFCFAFCFAFAFAFAF8080FF8080806080CF80808080808080CFBFBFCF80808020CFCFCFAFCFAFAFAF80809F808080DF8020CF20808080808080CFCF8080CF20CFCFCFAFCFAFAFAFAF8080FF8080806080CF8020808080808080CFCF802020CFCFCFCFCFAFCFAFAFAF80809F808080DF8020CF2020CF20CF20808080CFCFCFCFCFAFCFAFCFAFAFAFAF8080808080808080CF80CF80208080802020CF20CF20CF20CFAFCFAFAFAFAFAF80808080808080808080808080808080808080808080808080808080808080808020BF2080FFBFFF806080808060FF9F80DF80DF80DF8FCF80EFCFBF808020808020808080BF80BF80FF808080608060808F808F80DF80DF80CF80808080BF808020808080FF80FF806080808060809F80DF80DF80DF80CF80EF8080808020808020808080BF80BF80FF808080608060808F808F80DF80DF80CF80808080BF808020808080FF80FF806080808060809F80DF80DF80DF80CF80EF8080808020808020808080BF80BF80FF808080608060808F808F80DF80DF80CF80808080BF808020808080FF80FF806080808060809F80DF80DF80DF80CF80EF8080808020808020808080BF80BF80FF808080608060808F808F80DFCFDF80CFBFEF8080BF808020808080FF80FF806080808060809F80DF80DF80DF8F80808080BF808020808020808080BF80BF80FF808080608060808F808F80DFCF80808080EF8080BF808020808080FF80FF806080808060809F80DF80DF80DF80CF808080BF808020808020808080BF80BF80FF808080608060808F808F80DF80DF808080EF8080BF808020808080FF80FF806080808060809F80DF80DF80DF80CF808080BF808020808020808080BF80BF80FF808080608060808F808F80DF80DF808080EF808080808020808080FF80FF806080808060809F80DF80DF80DF80CF808080BF80802080802020BF80BF20BF80FF606080609F60808FDF8F80DF80DF80CFBFEF8080BF808080808080808080808080808080808080808080808080808080808080808080         includebin "gfx/11col.bin"
+35EA                          include "scroll.asm"
+35EA                  patchline
+35EA  8680                    lda #$80
+35EC  B70600                  sta $600
+35EF  B705FF                  sta $5FF
+35F2  8E0400                  ldx #$400
+                              ;lda #$80
+35F5                  patchloop
+35F5  A784                    sta ,x
+35F7  308820                  leax 32,x
+35FA  8C0600                  cmpx #$600
+35FD  26F6                    bne patchloop
+35FF  39                      rts
+                      
+3600                  scrollseg
+3600  8E05E0                  ldx #$5E0
+3603                  scrollseglp1
+3603  A6A944F9                lda scrollpal,y
+3607  8100                    cmpa #0
+3609  2702                    beq scrollsegend
+360B  A780                    sta ,x+
+360D                  scrollsegend
+360D  39                      rts
+                      
+                      
+360E                  scrollcopy
+360E  8E03FF                  ldx #$3FF
+3611                  scrollcopylp
+3611  3002                    leax 2,x
+3613  A684                    lda ,x
+3615  301F                    leax -1,x
+3617  A784                    sta ,x
+3619  8C05FF                  cmpx #$5FF
+361C  26F3                    bne scrollcopylp
+361E  39                      rts
+                      
+361F                  loadcharseg
+361F  7F0023                  clr ycnt
+3622  BE0024                  ldx charaddr
+3625  108E0480                ldy #$480
+3629                  loadcharseglp1
+3629  A680                    lda ,x+
+362B  A7A4                    sta ,y
+362D  31A820                  leay 32,y
+3630  7C0023                  inc ycnt
+3633  B60023                  lda ycnt
+3636  8108                    cmpa #8
+3638  26EF                    bne loadcharseglp1
+363A  39                      rts
+                      
+363B                  calcletter
+363B  10BE002A                ldy charindex
+363F  A6A94332                lda string,y
+                              ;deca
+3643  10BF002A                sty charindex
+                              ;lda [currstring]
+                              ;lda #1
+3647  8100                    cmpa #0
+3649  2737                    beq calcletterzero
+364B  812C                    cmpa #44
+364D  2613                    bne skipcalcreset
+364F  10BE002A                ldy charindex
+3653  3121                    leay 1,y
+3655  10BF002A                sty charindex
+3659  7C0014                  inc sceneval
+365C  7C002E                  inc scrolltextval
+365F  7F0020                  clr vscnt
+                              ;bra skipcalcreset
+                      ;skippause
+                              ;cmpa #45
+                              ;bne skipcalcreset
+                              ;ldy #$0000
+                              ;sty charindex
+3662                  skipcalcreset
+3662  8E36D2                  ldx #chartable
+3665  10BE002A                ldy charindex
+3669  A6A94332                lda string,y
+                              ;ldd currstring
+                              ;addd charindex
+                              ;std currstring
+                              ;lda [currstring]
+                              ;lda #1
+366D  B70029                  sta letteraddcnt
+3670                  calcletterlp1
+3670  7A0029                  dec letteraddcnt
+3673  308848                  leax 72,x
+3676  B60029                  lda letteraddcnt
+3679  8100                    cmpa #0
+367B  26F3                    bne calcletterlp1
+367D  BF0024                  stx charaddr
+3680  2006                    bra calcletterend
+3682                  calcletterzero
+3682  8E36D2                  ldx #chartable
+3685  BF0024                  stx charaddr
+3688                  calcletterend
+3688  39                      rts
+                      
+3689                  scrollmain
+3689  B671B2                  lda scrollflag1
+368C  8100                    cmpa #0
+368E  2706                    beq doscroll
+3690  BD1160                  jsr scrollinit
+3693  7F71B2                  clr scrollflag1
+3696                  doscroll
+3696  B60028                  lda lettercnt
+3699  8100                    cmpa #0
+369B  2612                    bne skipvsrst
+369D  8609                    lda #9
+369F  B70028                  sta lettercnt
+36A2  10BE002A                ldy charindex
+36A6  3121                    leay 1,y
+36A8  10BF002A                sty charindex
+36AC  BD363B                  jsr calcletter
+36AF                  skipvsrst
+                              ;jsr scrollcopy
+36AF  BD361F                  jsr loadcharseg
+36B2  BD360E                  jsr scrollcopy
+36B5  BD35EA                  jsr patchline
+                      
+36B8  BE0024                  ldx charaddr
+36BB  3008                    leax 8,x
+36BD  BF0024                  stx charaddr
+                      
+36C0  7A0028                  dec lettercnt
+                      
+36C3  BE0024                  ldx charaddr
+36C6  8C4332                  cmpx #chartableend
+36C9  2606                    bne skipcharrst
+36CB  8E36D2                  ldx #chartable
+36CE  BF0024                  stx charaddr
+36D1                  skipcharrst
+                              ;sta letteraddcnt
+                              ;jsr scrollseg
+36D1  39                      rts
+                      
+                      ;chars
+                              ;+0:    light green
+                              ;+16:   yellow
+                              ;+32:   blue
+                              ;+48:   red
+                              ;+64:   white
+                              ;+80:   dark green
+                              ;+96:   pink
+                              ;+112:  orange
+                      
+36D2                  chartable
+                              ;72 bytes per char
+                              ;8 bytes per column
+                              ;9 bytes per row
+36D2                  char_a
+36D2  80B7FFF39F9FCFCFB3BFFFF39F9FCFCFBFBFFFF39F9FCFCFBFBFFF80809FCF80BFBFFFF59595C5C5BFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCF80BAFFFF9F9FCFCF8080808080808080         fcb 128,183,255,243,159,159,207,207,179,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,191,191,255,128,128,159,207,128,191,191,255,245,149,149,197,197,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+371A                  char_b
+371A  BFBFFFF39F9FCFCFBFBFFFF39F9FCFCFBFBFFFF39F9FCFCFBFBFFF808080CFCFBFBFFFF59595CFCFBFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCC80BAFFF8929FCA808080808080808080         fcb 191,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,191,191,255,128,128,128,207,207,191,191,255,245,149,149,207,207,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,204,128,186,255,248,146,159,202,128,128,128,128,128,128,128,128,128
+3762                  char_c
+3762  BFBFFFF39F9FCFCFBFBFFFF39F9FCFCFBFBFFFF39F9FCFCFBFBFFF80809FCFCFBFBFFF80809FCFCFBFBFFF80809FCFCFB3BFFF80809FCFCC80BAFF80809FCA808080808080808080         fcb 191,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,191,191,255,128,128,159,207,207,191,191,255,128,128,159,207,207,191,191,255,128,128,159,207,207,179,191,255,128,128,159,207,204,128,186,255,128,128,159,202,128,128,128,128,128,128,128,128,128
+37AA                  char_d
+37AA  BFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCFBFBF80808080CFCFBFBFF5F59595CFCFBFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCC80BAFFFF9F9FCA808080808080808080         fcb 191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,207,191,191,128,128,128,128,207,207,191,191,245,245,149,149,207,207,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,204,128,186,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+37F2                  char_e
+37F2  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFF1949FCFCFBFBFFFF39C9FCFCFBFBFFFF39C9FCFCFB3BFFFF39C9FCFCC80BAFFF39C9FCA808080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,241,148,159,207,207,191,191,255,243,156,159,207,207,191,191,255,243,156,159,207,207,179,191,255,243,156,159,207,204,128,186,255,243,156,159,202,128,128,128,128,128,128,128,128,128
+383A                  char_f
+383A  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFF194808080BFBFFFF39C808080BFBFFFF39C808080B3BFFFF39C80808080BAFFF39C8080808080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,241,148,128,128,128,191,191,255,243,156,128,128,128,191,191,255,243,156,128,128,128,179,191,255,243,156,128,128,128,128,186,255,243,156,128,128,128,128,128,128,128,128,128,128,128
+3882                  char_g
+3882  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFF808080CFCFBFBFFFF39F9FCFCFBFBFFFF39F9FCFCFB3BFFFF39F9FCFCC80BAFFF39F9FCA808080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,128,128,128,207,207,191,191,255,243,159,159,207,207,191,191,255,243,159,159,207,207,179,191,255,243,159,159,207,204,128,186,255,243,159,159,202,128,128,128,128,128,128,128,128,128
+38CA                  char_h
+38CA  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBBBFFFFF9F9FCFCE8080F3FF808080808080F3FF80808080B7BFFFFF9F9FCFCDBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCF8080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,187,191,255,255,159,159,207,206,128,128,243,255,128,128,128,128,128,128,243,255,128,128,128,128,183,191,255,255,159,159,207,205,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+3912                  char_i
+3912  80808080808080808080808080808080BFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCE808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,206,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+395A                  char_j
+395A  808080808093C580808080808093CFCC808080808093CFCF808080808093CFCFB5B5F1F59597CFCFBFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCCBBBFF3FF9F9FCA808080808080808080         fcb 128,128,128,128,128,147,197,128,128,128,128,128,128,147,207,204,128,128,128,128,128,147,207,207,128,128,128,128,128,147,207,207,181,181,241,245,149,151,207,207,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,204,187,191,243,255,159,159,202,128,128,128,128,128,128,128,128,128
+39A2                  char_k
+39A2  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFB2BAFAFA9A9ACAC8B5B5F5F49195C5C5BFBFFFFC939FCFCFBFBFFF80809FCFCFBFBEF8808092CBCF8080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,178,186,250,250,154,154,202,200,181,181,245,244,145,149,197,197,191,191,255,252,147,159,207,207,191,191,255,128,128,159,207,207,191,190,248,128,128,146,203,207,128,128,128,128,128,128,128,128
+39EA                  char_l
+39EA  BFBFFFFF9F9FC580BFBFFFFF9F9FCFCCBFBFFFFF9F9FCFCF808080808093CFCF808080808093CFCF808080808093CFCF808080808093CFCC808080808093CA808080808080808080         fcb 191,191,255,255,159,159,197,128,191,191,255,255,159,159,207,204,191,191,255,255,159,159,207,207,128,128,128,128,128,147,207,207,128,128,128,128,128,147,207,207,128,128,128,128,128,147,207,207,128,128,128,128,128,147,207,204,128,128,128,128,128,147,202,128,128,128,128,128,128,128,128,128
+3A32                  char_m
+3A32  BFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFCF59595C5C5BFBFFCFA9A9ACACABFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCF80BAFFFF9F9FCFCF8080808080808080         fcb 191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,245,149,149,197,197,191,191,252,250,154,154,202,202,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+3A7A                  char_n
+3A7A  BFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFC8080808080BFBFFC8080808080BFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCF80BAFFFF9F9FCFCF8080808080808080         fcb 191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+3AC2                  char_o
+3AC2  80B5FCFF9F9FC580B3BFFCFF9F9FCFCCBFBFFCFF9F9FCFCFBFBFFC808080CFCFBFBFFC808080CFCFBFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCC80BAFFFF9F9FCA808080808080808080         fcb 128,181,252,255,159,159,197,128,179,191,252,255,159,159,207,204,191,191,252,255,159,159,207,207,191,191,252,128,128,128,207,207,191,191,252,128,128,128,207,207,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,204,128,186,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+3B0A                  char_p
+3B0A  BFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFC8080808080BFBFFCFF9F808080BFBFFFFF9F808080B3BFFFFF9F80808080BAFFFF9F8080808080808080808080         fcb 191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,128,128,128,128,128,191,191,252,255,159,128,128,128,191,191,255,255,159,128,128,128,179,191,255,255,159,128,128,128,128,186,255,255,159,128,128,128,128,128,128,128,128,128,128,128
+3B52                  char_q
+3B52  80B5FCFF9F9FC580B3BFFCFF9F9FCFCCBFBFFCFF9F9FCFCFBFBFFC808080CFCFBFBFFC808080CACABFBFFFFF9F9FCFCDB3BFFFFF9F9FCFCF80BAFFFF9F9FCFCF8080808080808080         fcb 128,181,252,255,159,159,197,128,179,191,252,255,159,159,207,204,191,191,252,255,159,159,207,207,191,191,252,128,128,128,207,207,191,191,252,128,128,128,202,202,191,191,255,255,159,159,207,205,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+3B9A                  char_r
+3B9A  BFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFCFF9F9FCFCFBFBFFC8080808080BFBFFCFF9F808080BFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCF80BAFFFF9F9BCFCF8080808080808080         fcb 191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,255,159,159,207,207,191,191,252,128,128,128,128,128,191,191,252,255,159,128,128,128,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,155,207,207,128,128,128,128,128,128,128,128
+3BE2                  char_s
+3BE2  BFBFFCFC8093C580BFBFFCFF8093CFCCBFBFFCFF9C93CFCFBFBFFCFF9F93CFCFBFBFFCFF9F93CFCFBFBFFCF39F93CFCFB3BFFC809F93CFCF80BAFC809393CFCF8080808080808080         fcb 191,191,252,252,128,147,197,128,191,191,252,255,128,147,207,204,191,191,252,255,156,147,207,207,191,191,252,255,159,147,207,207,191,191,252,255,159,147,207,207,191,191,252,243,159,147,207,207,179,191,252,128,159,147,207,207,128,186,252,128,147,147,207,207,128,128,128,128,128,128,128,128
+3C2A                  char_t
+3C2A  BFBFFC8080808080BFBFFC8080808080BFBFFC8080808080BFBFFC8080808080BFBFFC8080808080BFBFFFFF9F9FCFCFB3BFFFFF9F9FCFCF80BAFFFF9F9FCFCF8080808080808080         fcb 191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,255,255,159,159,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,207,128,128,128,128,128,128,128,128
+3C72                  char_u
+3C72  BFBFFFFF9F9FC580BFBFFFFF9F9FCFCCBFBFFFFF9F9FCFCF808080808080C5C5808080808080CFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCCBFBFFFFF9F9FCA808080808080808080         fcb 191,191,255,255,159,159,197,128,191,191,255,255,159,159,207,204,191,191,255,255,159,159,207,207,128,128,128,128,128,128,197,197,128,128,128,128,128,128,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,204,191,191,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+3CBA                  char_v
+3CBA  BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCF808080808080C5C5808080808080CFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCCBFBFFFFF9F9FCA808080808080808080         fcb 191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,207,128,128,128,128,128,128,197,197,128,128,128,128,128,128,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,204,191,191,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+3D02                  char_w
+3D02  BFBFFFFF9F9FC580BFBFFFFF9F9FCFCCBFBFFFFF9F9FCFCFB5B5F5F59594CFCFBABAFAFA9A98CFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCCBFBFFFFF9F9FCA808080808080808080         fcb 191,191,255,255,159,159,197,128,191,191,255,255,159,159,207,204,191,191,255,255,159,159,207,207,181,181,245,245,149,148,207,207,186,186,250,250,154,152,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,204,191,191,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+3D4A                  char_x
+3D4A  BFBFFD808097CFCFBFBFFFFC939FCFCFBFBFFFFC939FCFCFBABAFAF8929ACACAB5B5F5F49195C5C5BFBFFFFC939FCFCFBFBFFFFC939FCFCFBFBFFE80809BCFCF8080808080808080         fcb 191,191,253,128,128,151,207,207,191,191,255,252,147,159,207,207,191,191,255,252,147,159,207,207,186,186,250,248,146,154,202,202,181,181,245,244,145,149,197,197,191,191,255,252,147,159,207,207,191,191,255,252,147,159,207,207,191,191,254,128,128,155,207,207,128,128,128,128,128,128,128,128
+3D92                  char_y
+3D92  BFBFFDF4809FCFCFBFBFFFFF809FCFCFBFBFFFFF9C9FCFCF8080FFFF9C9FCFCF8080FAFA989FCFCFBFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCCBFBFFFFF9F9FCA808080808080808080         fcb 191,191,253,244,128,159,207,207,191,191,255,255,128,159,207,207,191,191,255,255,156,159,207,207,128,128,255,255,156,159,207,207,128,128,250,250,152,159,207,207,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,204,191,191,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+3DDA                  char_z
+3DDA  80B5FC809393CFCFB3BFFC809F93CFCFBFBFFCF39F93CFCFBFBFFCFF9F93CFCFBFBFFCFF9F93CFCFBFBFFCFF9C93CFCFBFBFFCFF8093CFCCBFBFFCFC8093CA808080808080808080         fcb 128,181,252,128,147,147,207,207,179,191,252,128,159,147,207,207,191,191,252,243,159,147,207,207,191,191,252,255,159,147,207,207,191,191,252,255,159,147,207,207,191,191,252,255,156,147,207,207,191,191,252,255,128,147,207,204,191,191,252,252,128,147,202,128,128,128,128,128,128,128,128,128
+3E22                  char_dash
+3E22  8080F1F5948080808080F3FF9C8080808080F3FF9C8080808080F3FF9C8080808080F3FF9C8080808080F3FF9C8080808080F3FF9C8080808080F2FA988080808080808080808080         fcb 128,128,241,245,148,128,128,128,128,128,243,255,156,128,128,128,128,128,243,255,156,128,128,128,128,128,243,255,156,128,128,128,128,128,243,255,156,128,128,128,128,128,243,255,156,128,128,128,128,128,243,255,156,128,128,128,128,128,242,250,152,128,128,128,128,128,128,128,128,128,128,128
+3E6A                  char_exclamation
+3E6A  80808080808080808080808080808080BFBFFFFF9F9CCFCFBFBFFFFF9F9CCFCFBFBFFFFF9F9CCFCFBFBFFFFF9F9CCFCE808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,191,191,255,255,159,156,207,207,191,191,255,255,159,156,207,207,191,191,255,255,159,156,207,207,191,191,255,255,159,156,207,206,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+3EB2                  char_question
+3EB2  80B5808080808080B3BF808080808080BFBFF1F59595C1C5BFBFF3FF9F9FC3CFBFBFF3FF9F9FC3CFBFBFF3FF9A9AC2C8B3BFFFFF8080808080BAFFFE808080808080808080808080         fcb 128,181,128,128,128,128,128,128,179,191,128,128,128,128,128,128,191,191,241,245,149,149,193,197,191,191,243,255,159,159,195,207,191,191,243,255,159,159,195,207,191,191,243,255,154,154,194,200,179,191,255,255,128,128,128,128,128,186,255,254,128,128,128,128,128,128,128,128,128,128,128,128
+3EFA                  char_fullstop
+3EFA  80808080808080808080808080808080808080808080808080808080808080C580808080808080CA8080808080808080808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,197,128,128,128,128,128,128,128,202,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+3F42                  char_circumflex
+3F42  80BC80F7939FC580B3BCF3FF939FCFCCBF80FFFF939FCFCFBF80FFFF8080C3CFBF80FFFF8080C3CFBF80FFFF9F9FCFCFB3BCF3FF9F9FCFCC80BC80FA9F9FCA808080808080808080         fcb 128,188,128,247,147,159,197,128,179,188,243,255,147,159,207,204,191,128,255,255,147,159,207,207,191,128,255,255,128,128,195,207,191,128,255,255,128,128,195,207,191,128,255,255,159,159,207,207,179,188,243,255,159,159,207,204,128,188,128,250,159,159,202,128,128,128,128,128,128,128,128,128
+3F8A                  char_space
+3F8A  808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+3FD2                  char_apostrophe
+3FD2  808080808080808080808080808080808080808080808080B5B4808080808080BA808080808080808080808080808080808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,181,180,128,128,128,128,128,128,186,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+401A                  char_comma
+401A  808080808080808080808080808080808080808080808080808080808080C1C7808080808080C2C88080808080808080808080808080808080808080808080808080808080808080         fcb 128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,193,199,128,128,128,128,128,128,194,200,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+4062                  char_zero
+4062  80B5FCFF9F9FCFC4B3BFFCFF9F9FCFCFBFBFFCFA9A9FCFCFBFBFFC80979ECFCFBFBFFCF79E80CFCFBFBFFFFF9595CFCFB3BFFFFF9F9FCFCF80BAFFFF9F9FCFC88080808080808080         fcb 128,181,252,255,159,159,207,196,179,191,252,255,159,159,207,207,191,191,252,250,154,159,207,207,191,191,252,128,151,158,207,207,191,191,252,247,158,128,207,207,191,191,255,255,149,149,207,207,179,191,255,255,159,159,207,207,128,186,255,255,159,159,207,200,128,128,128,128,128,128,128,128
+40AA                  char_one
+40AA  80B5808080808080B3BF808080808080BFBFF1F59595C5C5BFBFF3FF9F9FCFCFBFBFF3FF9F9FCFCFBABAF2FA9A9ACACA808080808080808080808080808080808080808080808080         fcb 128,181,128,128,128,128,128,128,179,191,128,128,128,128,128,128,191,191,241,245,149,149,197,197,191,191,243,255,159,159,207,207,191,191,243,255,159,159,207,207,186,186,242,250,154,154,202,202,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+40F2                  char_two
+40F2  80B780F19C9FCFCDB3BFF1FF9C9FCFCFBFBFF3FF9C80CFCFBFBFF3FF9C80CFCFBFBFF3FF9C80CFCFBFBFF3FF9C80CFCFBFBFF3FF9880CFCFBFBFF3F88080CFCF8080808080808080         fcb 128,183,128,241,156,159,207,205,179,191,241,255,156,159,207,207,191,191,243,255,156,128,207,207,191,191,243,255,156,128,207,207,191,191,243,255,156,128,207,207,191,191,243,255,156,128,207,207,191,191,243,255,152,128,207,207,191,191,243,248,128,128,207,207,128,128,128,128,128,128,128,128
+413A                  char_three
+413A  BFBFFC80809FCFCFBFBFFC80809FCFCFBFBFFCF5949FCFCFBFBFFCFF9C9FCFCFBFBFFCFF9C9FCFCFBFBFFCFF9C9FCFCFBBBFFCFF9C9FCFCE80BBFCFF9C9FCE808080808080808080         fcb 191,191,252,128,128,159,207,207,191,191,252,128,128,159,207,207,191,191,252,245,148,159,207,207,191,191,252,255,156,159,207,207,191,191,252,255,156,159,207,207,191,191,252,255,156,159,207,207,187,191,252,255,156,159,207,206,128,187,252,255,156,159,206,128,128,128,128,128,128,128,128,128
+4182                  char_four
+4182  BFBFFDF480808080BFBFFFFF80808080BFBFFFFF9C8080808080FFFF9C8080808080FAFA98808080BFBFFFFF9F9FCFCFBFBFFFFF9F9FCFCCBFBFFFFF9F9FCA808080808080808080         fcb 191,191,253,244,128,128,128,128,191,191,255,255,128,128,128,128,191,191,255,255,156,128,128,128,128,128,255,255,156,128,128,128,128,128,250,250,152,128,128,128,191,191,255,255,159,159,207,207,191,191,255,255,159,159,207,204,191,191,255,255,159,159,202,128,128,128,128,128,128,128,128,128
+41CA                  char_five
+41CA  BFBFFCFF9F80CFC4BFBFFCFF9F80CFCDBFBFFCFA9F80CFCFBFBFFC809F80CFCFBFBFFC809F80CFCFBFBFFC809F95CFCFB3BFFC809F9FCFCF80BAFC809F9FCFCE8080808080808080         fcb 191,191,252,255,159,128,207,196,191,191,252,255,159,128,207,205,191,191,252,250,159,128,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,149,207,207,179,191,252,128,159,159,207,207,128,186,252,128,159,159,207,206,128,128,128,128,128,128,128,128
+4212                  char_six
+4212  BFBFFCFF9F9FCFC4BFBFFCFF9F9FCFCFBFBFFCFA9F9ACFCFBFBFFC809F80CFCFBFBFFC809F80CFCFBFBFFC809F95CFCFB3BFFC809F9FCFCF80BAFC809F9FCFC88080808080808080         fcb 191,191,252,255,159,159,207,196,191,191,252,255,159,159,207,207,191,191,252,250,159,154,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,149,207,207,179,191,252,128,159,159,207,207,128,186,252,128,159,159,207,200,128,128,128,128,128,128,128,128
+425A                  char_seven
+425A  BFBFFC8080808080BFBFFC8080808080BFBFFC808095C5C5BFBFFC80979FCFCFBFBFFCF79F9FCFCFBFBFFFFF9F9ACACAB3BFFFFF9880808080BAFFF8808080808080808080808080         fcb 191,191,252,128,128,128,128,128,191,191,252,128,128,128,128,128,191,191,252,128,128,149,197,197,191,191,252,128,151,159,207,207,191,191,252,247,159,159,207,207,191,191,255,255,159,154,202,202,179,191,255,255,152,128,128,128,128,186,255,248,128,128,128,128,128,128,128,128,128,128,128,128
+42A2                  char_eight
+42A2  80B5FCFF9F9FCFC4B3BFFCFF9F9FCFCFBFBFFCFA9F9ACFCFBFBFFC809F80CFCFBFBFFC809F80CFCFBFBFFCF59F95CFCFB3BFFCFF9F9FCFCF80BAFCFF9F9FCFC88080808080808080         fcb 128,181,252,255,159,159,207,196,179,191,252,255,159,159,207,207,191,191,252,250,159,154,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,128,207,207,191,191,252,245,159,149,207,207,179,191,252,255,159,159,207,207,128,186,252,255,159,159,207,200,128,128,128,128,128,128,128,128
+42EA                  char_nine
+42EA  80B5FCFF9F93CFC4B3BFFCFF9F93CFCFBFBFFCFA9F92CFCFBFBFFC809F80CFCFBFBFFC809F80CFCFBFBFFCF59F95CFCFB3BFFCFF9F9FCFCF80BAFCFF9F9FCFC88080808080808080         fcb 128,181,252,255,159,147,207,196,179,191,252,255,159,147,207,207,191,191,252,250,159,146,207,207,191,191,252,128,159,128,207,207,191,191,252,128,159,128,207,207,191,191,252,245,159,149,207,207,179,191,252,255,159,159,207,207,128,186,252,255,159,159,207,200,128,128,128,128,128,128,128,128
+                      
+4332                  chartableend
+                      
+4332                  string          ;pad first character, 44 for next scene
+4332  001F1F1F1F07040B0B0E1F0D0E15001B1B1F1F1F1F120B080F12131104000C1F070411041F160813071F001F0111000D031F120F000D0A080D201F0D04161F03040C0E1F050E111F1307041F0C08060713181F16040B12071F0C0802110E211F1307041F031100060E0D1F25241B1F1F1F1F1F1F0114131F1607001320121F080D1F001F031100060E0D1C1F1F1F1F1F1F2C         fcb 0,31,31,31,31,7,4,11,11,14,31,13,14,21,0,27,27,31,31,31,31,18,11,8,15,18,19,17,4,0,12,31,7,4,17,4,31,22,8,19,7,31,0,31,1,17,0,13,3,31,18,15,0,13,10,8,13,32,31,13,4,22,31,3,4,12,14,31,5,14,17,31,19,7,4,31,12,8,6,7,19,24,31,22,4,11,18,7,31,12,8,2,17,14,33,31,19,7,4,31,3,17,0,6,14,13,31,37,36,27,31,31,31,31,31,31,1,20,19,31,22,7,0,19,32,18,31,8,13,31,0,31,3,17,0,6,14,13,28,31,31,31,31,31,31,44
+43C4  1F1F1F1F1607181F0D0E131F16041F1204041F160700131F16041F02000D1F030E1F160813071F08131D1D1D1F1F0B041320121F0604131F120E0C041F0E0B03120A0E0E0B1F000213080E0D1F060E080D061B1B1F1F1F1F1F1F2C         fcb 31,31,31,31,22,7,24,31,13,14,19,31,22,4,31,18,4,4,31,22,7,0,19,31,22,4,31,2,0,13,31,3,14,31,22,8,19,7,31,8,19,29,29,29,31,31,11,4,19,32,18,31,6,4,19,31,18,14,12,4,31,14,11,3,18,10,14,14,11,31,0,2,19,8,14,13,31,6,14,8,13,6,27,27,31,31,31,31,31,31,44
+441F  1F1F1F1F1600120D20131F130700131F020E0E0B1C1C1F1F1F16042015041F0D0E131F1204040D1F0C0E11041F1307000D1F261F020E0B0E1411121F120E1F0500111F070015041F16041D1D1D1F1F1F0B041320121F0207000D06041F130700131B1F1F1F1F1F1F1F1F1F2C         fcb 31,31,31,31,22,0,18,13,32,19,31,19,7,0,19,31,2,14,14,11,28,28,31,31,31,22,4,32,21,4,31,13,14,19,31,18,4,4,13,31,12,14,17,4,31,19,7,0,13,31,38,31,2,14,11,14,20,17,18,31,18,14,31,5,0,17,31,7,0,21,4,31,22,4,29,29,29,31,31,31,11,4,19,32,18,31,2,7,0,13,6,4,31,19,7,0,19,27,31,31,31,31,31,31,31,31,31,44
+448B  1F1F1F1F02000D1F180E14111F0101021F0C0802110E1F030E1F130700131C1F070007001D1D1D1F1F090A1D1D1D1F1F1F0E071F18040007211F0704110420121F0E14111F040D1311181F050E111F1307041F110E130013080D061F120704040F1F020E0C0F0E1B1F1F1F1F1F2C         fcb 31,31,31,31,2,0,13,31,24,14,20,17,31,1,1,2,31,12,8,2,17,14,31,3,14,31,19,7,0,19,28,31,7,0,7,0,29,29,29,31,31,9,10,29,29,29,31,31,31,14,7,31,24,4,0,7,33,31,7,4,17,4,32,18,31,14,20,17,31,4,13,19,17,24,31,5,14,17,31,19,7,4,31,17,14,19,0,19,8,13,6,31,18,7,4,4,15,31,2,14,12,15,14,27,31,31,31,31,31,44
+                      
+44F9                  scrollpal
+44F9  808020BFFF609FCFCF9F60FFBF20808000         fcb 128,128,32,191,255,96,159,207,207,159,96,255,191,32,128,128,0
+450A                          include "torus.asm"
+450A                  torusmain
+450A  B60020                  lda vscnt
+450D  810C                    cmpa #12
+450F  260B                    bne skiptorus
+4511  7F0020                  clr vscnt
+4514  7C0014                  inc sceneval
+4517  BD1160                  jsr scrollinit
+451A  202F                    bra actualendiswear
+451C                  skiptorus
+451C  B671B9                  lda torusflag
+451F  8100                    cmpa #0
+4521  2703                    beq skiptorusinit
+4523  BD1150                  jsr creditsinit
+4526                  skiptorusinit
+                              ;jsr palswap
+4526  7C0021                  inc vscnt2
+4529  B60021                  lda vscnt2
+452C  8103                    cmpa #3
+452E  261B                    bne actualendiswear
+                      
+                              ;DBGPAL
+4530  7F0021                  clr vscnt2
+                      
+4533  BD454C                  jsr torusdraw
+4536  BD4571                  jsr toruscopy2
+4539  BE003D                  ldx torusgfxaddr
+453C  30890200                leax 512,x
+                              ;DBGPAL
+4540  8C5598                  cmpx #torusgfxend
+4543  2603                    bne torusend
+4545  8E4598                  ldx #torusgfx
+4548                  torusend
+4548  BF003D                  stx torusgfxaddr
+454B                  actualendiswear
+454B  39                      rts
+                      
+454C                  torusdraw
+454C  BE003D                  ldx torusgfxaddr
+454F  108E0400                ldy #$400
+4553  7F0022                  clr xcnt
+4556                  toruscopy
+4556  EC81                    ldd ,x++    ;only one increment for other cool effect
+4558  EDA1                    std ,y++
+455A  7C0022                  inc xcnt
+455D  B60022                  lda xcnt
+4560  8108                    cmpa #8
+4562  2606                    bne torusskipreset
+4564  31A810                  leay 16,y
+4567  7F0022                  clr xcnt
+456A                  torusskipreset
+456A  108C0800                cmpy #$800
+456E  26E6                    bne toruscopy
+4570  39                      rts
+                      
+4571                  toruscopy2
+4571  7F0022                  clr xcnt
+4574  8E0400                  ldx #$400
+4577  108E0410                ldy #$410
+457B                  toruscopy2lp
+457B  EC81                    ldd ,x++
+457D  EDA1                    std ,y++
+457F  7C0022                  inc xcnt
+4582  B60022                  lda xcnt
+4585  8108                    cmpa #8
+4587  2609                    bne torusskipreset2
+4589  308810                  leax 16,x
+458C  31A810                  leay 16,y
+458F  7F0022                  clr xcnt
+4592                  torusskipreset2
+4592  8C0800                  cmpx #$800
+4595  26E4                    bne toruscopy2lp
+4597  39                      rts
+                      
+4598                  torusgfx
+4598  5555FFFFFF55555555555555FFFFFFFF5557FFFFF555555555557FFFFFFFFFFF5557FFFF5555555557FFFFFFFFF55555555FFFF55555555FFFFFFFF555555555D55FFF5555555FFFFFFD555555555555FD57FF55555FFFFFD55555555557FFFF5555FD5555FFFFD555555557FFFFFFFF55557D555FFFD55555557FFFFD555555FFD55555FFF5555557FFFFF5555555557FFFFFD7FF555557FFFF55555FFFFFFF555557FFF55557FFFD555557F5555FFFFFF55555D555FFFD55555FFF55555555555FFFFFD57FFD55555FFFD5FFFFFFFFD555555555FF55555FFFD555555555557FFFFFFFFFF5555FFFF5557FFFFFFFFF555555555F5557FFF55557F555555555FFFFFFFFF557FFF55555FFD7FFFFFFFF5555555555FFF55555FFF55555555555FFFFFFFFDFF555557FFF555FFFFFFFFF55555555FD55557FFF5555FD55555557FFFFFFFF5555FFFFD5555FFD7FFFD5555555555555FFFF555555FFD55557FFFF55555557FFFD555555FFFF555F555555FFFFFFFFF5555555FFFFD5555FD555555557FD55555557FFFFF555557FF5555555555555557FFFFFF5555555FFF555555555555FFFFFFFD55555555FFFD555FD55FFFFFFFFFD5555555557FFFF55557FFFFFFFFD555555555555FFFFFD55555FFFD555555555555555FFFFFFD55555575555555555555555FFFFFFFD5555555755555555555557FFFFFFFF5555555557555555FFFFFFD5555555555555557FFF55555FFFFFF5555555555555FFFFFFFF55557FFFFD5555555555FFFFFFFFFFFF55557FFFD555555557FFFFFFFF555555D555FFFD5555555FFFFFFF5555555555FD55FFD555555FFFFFF55555555555F555557FD5555FFFFF5555555557FFFFFF55555F5555FFFF55555555FFFFF7FFFFD55557D55FFFD5555557FFFF55555555FFFFD5557FF555555FFFFD55555555555557FFFDFF55557FFFF55555FFFFFFFFF5555555F5555FFFF55555FF555555557FFFFFFFD557FFF55555FFF7FFFFFFFF55555555557FF55555FFFD5555555555FFFFFFFD57FD55557FFF555FFFFFFFFF555555557FD5557FFF5555F555555555FFFFFFFFDD557FFF55557FDFFFFFFFD555555555555FFF55555FFF555555557FFFFFFFFD57FF555557FFF55FFFFFFD5555555555FFD55557FFFD555F555557FFFFFFF557D55557FFFD5555FF7FD55555555FFFF5555FFFFD55555FFD55FFFFFF555555557FFFF5555557FFD55555557FFFFFF5FFFFD5555557FFFD5557D55555FFFFFFFD55555557FFFFD55557F55555557D555555555FFFFFD555555FFD55555555555557FFFFFFD55555557FFD557D555557FFFFFFFF5555555557FFFD555FFFFFFFFFFFF55555555555FFFFF55555FFFFFFF55555555555557FFFFFD55555F555555555555555555FFFFFFD55555555555555555555557FFFFFFFD555555555555555FFFFFFFD55555555555555555555555FFFFFFD55555555555555FFFF555555FFFFFD555555555557FFFFFFFFD55557FFFF5555555555FFFFFFFFFF55FD555FFFF55555555FFFFFFFD55555555F555FFF5555557FFFFFF5555555555555555FF555557FFFFF5555555557FD5555555FF5555FFFFD55555555FFFFFFFF555557D555FFFD5555555FFFFD555555FFD555555FFF5555557FFFF55555555557FFFFFD7FD55555FFFFD5557FFFFFFF55555555FD5555FFFF55555F55555555FFFFFF5575557FFF55555FFFFFFFFD55555555FFF55FFF555557FF55555555FFFFFFD55555FFD55557FFD55FFFFFD55555555FFFFFF55557FFF55575555557FFFFFFD5555F5557FFF55557FFFFFD5555555557FFF555FFFD5555FFD55555FFFFFFD5555555FFFD55557FFD57FFF55555555FFFFFFFFD55555FFFD55F555FFFFF55555557F555557FFFF5557F55555555FFFFFFFD55557FFFF55555FF5FFFFF555555555555FFFFD555557FFD55557FFF5555555FFFFF5555555FFFD555F55557FFFFFFFFF55555555FFFFD5555FD5555FFFFFD555555555FFFFF555555FF5555555555555555FFFFFFD5555557FFD55F555555557FFFFFFFD55555555FFFD5555555FFFFFFFFFD5555555555FFFF5555FFFFFFFFFFD555555555557FFFFF5555FFFFFFD555555555555557FFFFFD5555F5555555555555555557FFFFFFD55555D555555555FFFFFFFFD5555555555555D55555555FFFFFFF5555555555555555F5555557FFFFFF5555555555555FFFFFFD55555FFFFF55555555557FFFFFFFFFFF5555FFFFD55555555FFFFFFFFD555557D557FFF55555557FFFFFFD55555555555557FF5555557FFFFF5555555555555557D7FD55557FFFFD55555557FFFFFF555555F5555FFFF55555557FFFFFFFFFF555557557FFF5555555FFFF55555555FFFFFF555FFD555557FFFD557FFFFFFD55555FFF7FD55557FFFD5557555555FFFFFD55557D5557FFFD5555FFD55555555557FFFFF555FFFD55557FD557FFFFFFFD555555557FFD55557FFD5FD555555555FFFFFFF7FF55557FFF555555FFFFFFF55555555FD5557FFFD555FFD55555555FFFFFFFFD555FFFD5555FF557FFFFFF55555555555FFFD55557FF57D5555555FFFFFFFF5FFFD55555FFF5575FFFFFFF55555557FF555555FFFF555FD5555557FFFFFFFF555555FFFF55557FDFFF5555555555555557FFFF555557FF557FFFFF555555557FFFFF5555557FFD555555FFFFFD57FFFFF55555555FFFF5557F5557FFFFFFFD555555555FFFFD55557FD5FFFFF555555555557FFFFF5555557FF557555555555557FFFFFFD5555555FFFD5555555557FFFFFFFF5555555557FFFD55557FFFFFFFFFFD55555555557FFFFD55FFFFFFFFFFD5555555555557FFFFF555FFFFFFD5555555555555557FFFFFD555FFD5555555555FFFFFFFFFD555555555FF555555555FFFFFFFF5555555555555FF55555557FFFFFFD555555555555555FFD555557FFFFF555555555555FFFFFF7FD55557FFFF5555555555FFFFFFFFF557F5557FFFD55555557FFFFFFF5555555FFD557FFD555555FFFFFF555555555557FFD5FFD55555FFFFF55555555D55555557FDFF5555FFFFD5555555FFFFFFFF5555557D557FFFD555555FFFF5555555FFFF555557FFD555555FFFF555555555555FFFFF5FFD55557FFFD5557FFFFFFFF55555557F55557FFFD5557D555555555FFFFFFFFD555FFFD55557FFFFFFFFFF555555555557FFD55557FF5555555555FFFFFFFFF5FFF55557FFF55FFFFFFFFF5555555557F55555FFFD557555555555FFFFFFFFFF5555FFFD5557FFFFFFFFFD555555555555FFFD55557FD555555557FFFFFFFF55FFFD55555FFF57FFFFFF5555555555FFFD555557FFF557D55557FFFFFFD55FF5555557FFFD5557FF555555FFFFFFD555555FFFFD55557FF5FFFFD555555555557FFFFD555557FFD555FFFF5555555FFFFFF55555557FFF555F57FFFF5FFFFFFF555555557FFFF55557F5FFFFFFFFD5555555557FFFFF555557FD5755555555555555FFFFFFD5555557FF5555555555555FFFFFFFD55555555FFFD55555555FFFFFFFFFD5555555557FFFD557FFFFFFFFFFFF555555555557FFFFD5FFFFFFFFFFF55555555555555FFFFFD5FFFFD55555555557FFFFFFFFFFD55555FFFF5555555557FFFFFFFFD555555555FFFD55555557FFFFFFF55555555555557FFD555555FFFFFFD5555555555555FF57FD55555FFFFF55555555557FFFFFFF55FD5555FFFF555555555FFFFFFF5555FFFF5557FFD5555555FFFFFFD5555555FFFFD55FFD555557FFFFF5555555555555FFFD7FD55557FFFFD555555FFFFFFF555557FF5555FFFF5555557FFD57FFFFFF555557557FFF555555FFFD555555555FFFFFFF57FFD55555FFFD55FFFFFFFF555555555FF55555FFFD555555555555FFFFFFF57F5555FFFD5555FFFFFFFFFF55555555FD557FFD55557FD555555555FFFFFFD5555FFF55555FFD5FFFFFFFD555555557F7FF55555FFFD5555555555FFFFFFFF55FD5555FFFD5557FFFFFF55555555555F5555FFFF55557F555555FFFFFFFF555555FFFF55555FFD5FFFD555555557FFD5FFFF555557FFF555557FFFF5555555FFFD555555FFFD555F5555555FFFFFFFD5555557FFFF55557FDFFD555555555555555FFFFF555555FF57FFFFD555555555FFFFFF5555557FFF557FFFF55555FFFFFFFD55555557FFFD555FDFFFFFFFFFFF5555555557FFFFD55557F55FFFF5555555555557FFFFF5555557FF555555555555555FFFFFFD55555557FFD55555555557FFFFFFFF555555555FFFF5555555FFFFFFFFFF55555555557FFFF57FFFFFFFFFFFFD555555555555FFFFF5FFFFFD555555555555FFFFFFFFFFFFF5FFFFD5555555555FFFFFFFFFFD5555557FFF555555555FFFFFFFF555555555557FFD5555555FFFFFFF555555555555555FFD555557FFFFFD55555555557FFFF557FD5555FFFFF5555555557FFFFFFFFFFFFD5557FFF55555555FFFFFFD55555FFF57557FFD5555557FFFFF555555555FFFFFD57FD55555FFFFF5555555555555557FFDFF5555FFFFD555555FFFFFFFF55555557D557FFFD555557FFD5555555FFFFFF55557FFD555557FFD5FFFFFFFF555557FFD7FF55555FFFF55555555557FFFFD5555FF5555FFFF5557FFFF5555555555FFFFF5557FFF55557F55555FFFFFFF555555557FFF55555FF5FFFFD55555555FFFFF57FF55555FFF5555555FFFFFFF5555557FD55557FFF555FFFD555555555FFFFFF55557FFF5555FD555FFFFF555555555555FFFF55555FF5FD555555FFFFFFFD55FFFF555555FFD557FFFFFF55555555FFFF555555FFFD557555555FFFFFFFFFF5555555FFFFD5557DD555555557FF55555555FFFFD55555FF5FFD5555555555555FFFFFF555555FFD55FFFD5555555FFFFFFFD5555555FFFD557F55555FFFFFFFFD555555557FFFD5555FD5FFFFFFFF55555555557FFFFF555557FDFD555555555555557FFFFFD5555557FF55555555555555FFFFFFFD55555557FF55555555555FFFFFFFFD5555555557FF5555555FFFFFFFFFFD55555555555FFF555FFFFFD55555555555557FFFFFFFFF557FFFFD55555555555FFFFFFFFFFFFF557FFFD5555555557FFFFFFFFF555555557FFF55555555FFFFFFFD5555555555557FFD555555FFFFFFD5555555555557F55FF555557FFFFF5555555557FFFFFFD557F55557FFFF55555555FFFFFF5FFFF5557D557FFF5555555FFFFFD5555555FFFF5555FFF555557FFFFD555555555555FFFFD7FD55557FFFF555555FFFFFFF55555577F5557FFFD555557FD5555555FFFD5555D557FFD555557FFD7D5555555557FFFFD5FFF555557FFF5557FFFFFFFF55555557FD55557FFF555D55555555557FFFFFFFD5557FFF5555F5FFFFFFFF555555555D557FFF55555FDF555555557FFFFFFFF55FFF55555FFF555FFFFFFF5555555557FFD55557FFD55755555555FFFFFFFFFFD55557FFF5557D7FFFFFFF55555555F55557FFFD5555FD55555555FFFFFFFD555FFFFD55555FF57FFFFF55555555555FFFF5555557FFD555555FFFF555557FFFD5555557FFFD555F555555FFFFFFFD55555557FFFF55557F5F55555555555555555FFFFFD55555FFD5F5555555555557FFFFFFD555555FFF555D55555557FFFFFFFF55555555FFFF5557F5FFFFFFFFFFD5555555557FFFF555557FFFFFFF5555555555555FFFFFD555557F55555555555555557FFFFFFD5555555F55555555555555FFFFFFFF555555555F55555555555FFFFFFFFFD5555555555F         includebin "torus/torus5.bin"
+5598                  torusgfxend
+5598                          include "voxelsheep.asm"
+5598                  copysheep
+5598  BE0031                  ldx sheepgfxaddr
+559B  108E0460                ldy #$460
+559F  7F0022                  clr xcnt
+55A2  7F0023                  clr ycnt
+55A5                  copysheeplp
+55A5  A680                    lda ,x+
+55A7  A7A4                    sta ,y
+55A9  3121                    leay 1,y
+55AB  7C0022                  inc xcnt
+55AE  B60022                  lda xcnt
+55B1  8110                    cmpa #16
+55B3  26F0                    bne copysheeplp
+55B5  31A830                  leay 48,y
+55B8  7F0022                  clr xcnt
+55BB  7C0023                  inc ycnt
+55BE  B60023                  lda ycnt
+55C1  810C                    cmpa #12
+55C3  26E0                    bne copysheeplp
+55C5  39                      rts
+                      
+55C6                  copysheepscrn
+55C6  8E04A0                  ldx #$4A0
+55C9  108E04B0                ldy #$4B0
+55CD  7F0022                  clr xcnt
+55D0  7F0023                  clr ycnt
+55D3                  copysheepscrnlp
+55D3  EC81                    ldd ,x++
+55D5  EDA1                    std ,y++
+55D7  7C0022                  inc xcnt
+55DA  B60022                  lda xcnt
+55DD  8118                    cmpa #24
+55DF  26F2                    bne copysheepscrnlp
+55E1  7F0022                  clr xcnt
+55E4  7C0023                  inc ycnt
+55E7  308810                  leax 16,x
+55EA  31A810                  leay 16,y
+55ED  B60023                  lda ycnt
+55F0  810C                    cmpa #12
+55F2  26DF                    bne copysheepscrnlp
+55F4  39                      rts
+                      
+55F5                  sheepmain
+55F5  B60020                  lda vscnt
+55F8  810F                    cmpa #15
+55FA  2608                    bne skipsheep
+55FC  7F0020                  clr vscnt
+55FF  7C0014                  inc sceneval
+5602  2032                    bra sheepend
+5604                  skipsheep
+5604  B671B4                  lda sheepflag
+5607  8100                    cmpa #0
+5609  2703                    beq dosheep
+560B  BD1180                  jsr sheepinit
+560E                  dosheep
+560E  BD55C6                  jsr copysheepscrn
+5611  7C0021                  inc vscnt2
+5614  B60021                  lda vscnt2
+5617  8102                    cmpa #2
+5619  261B                    bne sheepend
+561B  7F0021                  clr vscnt2
+561E  BD5598                  jsr copysheep
+5621  BE0031                  ldx sheepgfxaddr
+5624  308900C0                leax 192,x
+5628  8C68F7                  cmpx #sheepgfxend-32
+562B  2606                    bne skipgfxreset
+562D  8E5637                  ldx #sheepgfx
+5630  BF0031                  stx sheepgfxaddr
+5633                  skipgfxreset
+5633  BF0031                  stx sheepgfxaddr
+5636                  sheepend
+5636  39                      rts
+                      
+5637                  sheepgfx
+                          ;includebin "voxel/sheeplong1.bin"
+                          ;includebin "voxel/sheeplong2.bin"
+                          ;includebin "voxel/sheeplong3.bin"
+5637  55555555555555555555555555555555555555555555555555555555555AA955555555554000000000000000AAAAA955555554000000000000000000AAAAAAAA555554000000000000000000AAAAAAAA555000000000000000000000000AAAAA555000000000000000000000000555555550000000000000000000000005555555500000000000000000000000055555555001556AA00000000002AA55555555555555556AA55555555556AA55555555555555556AA55555555556AA555555555555555555555555555555555555555555555555555555555555555555AAA9555555555500000000000000002AAAAA555555540000000000000000000AAAAAAA5555540000000000000000000AAAAAAA5550000000000000000000000002AAAA5550000000000000000000000001555555500000000000000000000000055555555000000000000000000000000555555550001AAAAA80000000002AA95555555555555AAAAA95555555AAAAA95555555555555AAAAA95555555AAAAA9555555555555555555555555555555555555555555555555555555555555556AAAA555555555554000000000000000AAAAA9555555550000000000000000000AAAAAA55555550000000000000000000AAAAAA55555000000000000000000000002AAA555550000000000000000000000015555555500000000000000000000001555555555000000000000000000000015555555550000AAAAAA800000000AAA5555555555556AAAAAAA9555AAAAAAAA5555555555556AAAAAAA9555AAAAAAAA5555555555555555555555555555555555555555555555555555555555556AAAA55555555555555000000000000002AAAA95555555555400000000000000000AAAA5555555555400000000000000000AAAA555555554000000000000000000002AA5555555540000000000000000000015555555555400000000000000000000555555555554000000000000000000005555555555540000A0AAAA8000000AAA5555555555556AAAA5AAAAAAAA96AAAA5555555555556AAAA5AAAAAAAA96AAAA5555555555555555555555555555555555555555555555555555555555AAAAA555555555555555550000000000002AAA955555555555554000000000000000AA955555555555554000000000000000AA9555555555554000000000000000000055555555555540000000000000000000555555555555500000000000000000015555555555555000000000000000000155555555555558000000AAAA80002AA95555555555555AAAAA55AAAA956AAAA95555555555555AAAAA55AAAA956AAAA955555555555555555555555555555555555555555555555555555556AAAA55555555555555555555500000000002AA5555555555555555500000000000000255555555555555555000000000000002555555555555555000000000000000000155555555555550000000000000000001555555555555550000000000000000155555555555555500000000000000001555555555555555AA800000AAAA82AA9555555555555555AAAAAAAAAAAAAAAA9555555555555555AAAAAAAAAAAAAAAA9555555555555555555555555555555555555555555555555555556AAA95555555555555555555555555000000001555555555555555555555000000000000155555555555555555550000000000001555555555555555550000000000000000155555555555555500000000000000001555555555555555550000000000001555555555555555555500000000000015555555555555555555AAAA0000AAAA95555555555555555555AAAA9555AAAA95555555555555555555AAAA9555AAAA955555555555555555555555555555555555555555555555555556AAAA55555555555555555555555556A000000000015555555555555555555000000000000001555555555555555550000000000000015555555555555554000000000000000001555555555555540000000000000000015555555555555540000000000000005555555555555555400000000000000055555555555555556AA2AAAA00000AAA55555555555555556AAAAAAA6AAAAAAA55555555555555556AAAAAAA6AAAAAAA5555555555555555555555555555555555555555555555556AAAA55555555555555555555555556AAA80000000000015555555555555556A8000000000000000555555555555556A8000000000000000555555555555554000000000000000000055555555555540000000000000000000555555555555540000000000000000015555555555555400000000000000000155555555555556AA8002AAAA000000A955555555555556AAAA56AAAAA56AAAA955555555555556AAAA56AAAAA56AAAA955555555555555555555555555555555555555555555AAAA955555555555555555555555556AAAA800000000000005555555555555AAAA0000000000000000055555555555AAAA0000000000000000055555555555AA000000000000000000001555555555550000000000000000000015555555555540000000000000000000155555555555400000000000000000001555555555556AA8000002AAAA0200001555555555556AAAA96AAAAAAA56AAAA5555555555556AAAA96AAAAAAA56AAAA555555555555555555555555555555555555555555AAAA955555555555555555555555555AAAAA80000000000000005555555555AAAAA800000000000000000055555555AAAAA800000000000000000055555555AAA0000000000000000000000015555555500000000000000000000000155555555540000000000000000000001555555555400000000000000000000015555555556AA800000002AAAAAA000015555555556AAAAAAAA556AAAAAAAA5555555555556AAAAAAAA556AAAAAAAA55555555555555555555555555555555555555555AAAA5555555555555555555555555556AAAAA0000000000000000155555556AAAAAA80000000000000000000555556AAAAAA80000000000000000000555556AAAA0000000000000000000000001555555500000000000000000000000015555555400000000000000000000000155555554000000000000000000000001555555555AAA0000000002AAAAA80001555555555AAAAAA5555556AAAAA95555555555555AAAAAA5555556AAAAA955555555555555555555555555555555555555555AAA55555555555555555555555555555AAAAA0000000000000000155555556AAAAAAA0000000000000000000555556AAAAAAA0000000000000000000555556AAAA80000000000000000000000015555555400000000000000000000000155555554000000000000000000000001555555540000000000000000000000015555555555AA80000000000AAA9540015555555555AAA9555555555AAA9555555555555555AAA9555555555AAA9555555555555555555555555555555555555555555AAA95555555555555555555555555556AAAAAA000000000000000155555556AAAAAAAA000000000000000000555556AAAAAAAA000000000000000000555556AAAAA8000000000000000000000015555555000000000000000000000000155555554000000000000000000000001555555540000000000000000000000015555555556AAAA0000000000AAA540015555555556AAAA555555556AAAA555555555555556AAAA555555556AAAA5555555555555555555555555555555555555555556AAA955555555555555555555555555688AAAAA00000000000000155555555AAAAAAAAAA0000000000000001555555AAAAAAAAAA0000000000000001555555AAAAAA80000000000000000000005555555500000000000000000000000055555555500000000000000000000000555555555000000000000000000000005555555556AAAAAAA000000000AAA0005555555556AAAAAAA55556AAAAAAA5555555555556AAAAAAA55556AAAAAAA5555555555555555555555555555555555555555555AAAA955555555555555555555555556A2A2AAA800000000000155555555555AAAAAAAAAA0000000000001555555555AAAAAAAAAA0000000000001555555555AAAAAA800000000000000000155555555540000000000000000000001555555555540000000000000000000015555555555400000000000000000000155555555556AAAA2AAAA0000000AAA0155555555556AAAA6AAAA6AAAA6AAAA5555555555556AAAA6AAAA6AAAA6AAAA555555555555555555555555555555555555555555555AAAAA55555555555555555555555556A0A82AA8000000001555555555555556AAAAAAAAA00000000055555555555556AAAAAAAAA00000000055555555555556AAAAAA000000000000005555555555554000000000000000000055555555555550000000000000000000555555555555500000000000000000005555555555555AAAA802AAAA00002AA95555555555555AAAA956AAAAA55AAAA95555555555555AAAA956AAAAA55AAAAA555555555555555555555555555555555555555555555555AAAA95555555555555555555555555AA0A82AA800000555555555555555555AAAAAAAAA00000005555555555555555AAAAAAAAA000000055555555555555500AAAAA80000000000155555555555550000000000000000001555555555555550000000000000000155555555555555500000000000000001555555555555555AAAA8002AAAA00AA9555555555555555AAAAAAAAAAAAAAAA9555555555555555AAAAAAAAAAAAAAAA95555555555555555555555555555555555555555555555555555AAAA55555555555555555555555555AA0AA0AA005555555555555555555540AAAAAAAA800055555555555555555540AAAAAAAA80005555555555555555500002AAAA0000000055555555555555500000000000000000555555555555555540000000000000555555555555555555400000000000005555555555555555556AAA80002AAAAA5555555555555555556AAAAA556AAAAA5555555555555555556AAAAA556AAAAA555555555555555555555555555555555555555555555555555555555AAAA95555555555555555555555400AA82A02A955555555555555555540002AAAAAAAA055555555555555555540002AAAAAAAA05555555555555555400000000AAAA800005555555555555540000000000000000055555555555555550000000000000015555555555555555500000000000000155555555555555555AAAAAA8000AAAA955555555555555555AAAAAA95AAAAAA955555555555555555AAAAAA95AAAAAA955555555555555555555555555555555555555555555555555555555556AAAA95555555555555555554000000AA82A82A55555555555555540000000AAAAAAAAA55555555555555540000000AAAAAAAAA55555555555555000000000002AAAAA8155555555555550000000000000000001555555555555540000000000000000055555555555555400000000000000000555555555555556AA800AAAA800AAAAA555555555555556AAAA9AAAAAA9AAAAA555555555555556AAAA9AAAAAA9AAAAA555555555555555555555555555555555555555555555555555555555555AAAAA55555555555555550000000002AAA2A0A95555555555550000000000AAAAAAAAA95555555555550000000000AAAAAAAAA95555555555400000000000000AAAAAA955555555554000000000000000000055555555555540000000000000000000555555555555400000000000000000005555555555556AAA00000AAAA80AAAAA5555555555556AAAA95AAAAAA95AAAAA5555555555556AAAA95AAAAAA95AAAAA55555555555555555555555555555555555555555555555555555555555556AAAA55555555555540000000000002AAA8A8A55555555540000000000000AAAAAAAAAA5555555540000000000000AAAAAAAAAA55555540000000000000000002AAAAAA555555400000000000000000000005555555554000000000000000000000555555555540000000000000000000005555555555402AA80000000AAAAAAAAA5555555555556AAAAAAAA95AAAAAAAAA5555555555556AAAAAAAA95AAAAAAAAA555555555555555555555555555555555555555555555555555555555555555AAAA55555555555000000000000000AAAA8AA555555540000000000000000AAAAAAAAA95555540000000000000000AAAAAAAAA955540000000000000000000002AAAAA95554000000000000000000000001555555540000000000000000000000055555555400000000000000000000000555555554002AAA000000000AAAAAAA5555555555556AAAAAA955555AAAAAAA5555555555556AAAAAA955555AAAAAAA55555555555555555555555555555555555555555555555555555555555555556AA955555555550000000000000000AAAAAA55555554000000000000000002AAAAAAAA555554000000000000000002AAAAAAAA555000000000000000000000002AAAAA55500000000000000000000000015555555000000000000000000000000555555550000000000000000000000005555555500056AA80000000002AAAA555555555555556AAAA555555556AAAA555555555555556AAAA555555556AAAA5555555FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF     includebin "voxel/sheep5.bin"
+                          ;includebin "voxel/sheep6.bin"
+6917                  sheepgfxend
+6917                          include "credits.asm"
+6917                  creditsmain
+6917  BE0033                  ldx creditsaddr
+691A  108E07F0                ldy #$7F0
+691E  7F0022                  clr xcnt
+6921                  creditslp1
+6921  A680                    lda ,x+
+6923  A7A0                    sta ,y+
+6925  7C0022                  inc xcnt
+6928  B60022                  lda xcnt
+692B  8110                    cmpa #16
+692D  26F2                    bne creditslp1
+692F  7F0022                  clr xcnt
+6932  39                      rts
+                      
+6933                  patchcredits
+6933  CC0000                  ldd #$0000
+6936  8E07F0                  ldx #$7F0
+6939                  patchcreditslp
+6939  ED81                    std ,x++
+693B  8C0800                  cmpx #$800
+693E  26F9                    bne patchcreditslp
+6940  39                      rts
+                      
+6941                  copycredits
+6941  8E0400                  ldx #$400
+6944  108E03F0                ldy #$3F0
+6948  7F0022                  clr xcnt
+694B  7F0023                  clr ycnt
+694E                  copycreditslp1
+694E  EC81                    ldd ,x++
+6950  EDA1                    std ,y++
+6952  7C0022                  inc xcnt
+6955  B60022                  lda xcnt
+6958  8108                    cmpa #8
+695A  26F2                    bne copycreditslp1
+695C  7F0022                  clr xcnt
+695F  7C0023                  inc ycnt
+                              ;leax 16,x          ;it took me 4 hours to realise
+                              ;leay 16,y          ;why i didn't need to do this
+6962  B60023                  lda ycnt
+6965  8140                    cmpa #64
+6967  26E5                    bne copycreditslp1
+6969  39                      rts
+                      
+696A                  credits
+696A  7C0021                  inc vscnt2
+696D  B60021                  lda vscnt2
+6970  8106                    cmpa #6
+6972  263A                    bne creditsend
+6974  7F0021                  clr vscnt2
+6977  B671B5                  lda creditsflag
+697A  8100                    cmpa #0
+697C  2706                    beq docredits
+697E  BD1150                  jsr creditsinit
+6981  7F71B5                  clr creditsflag
+6984                  docredits
+6984  BD6917                  jsr creditsmain
+6987  BE0033                  ldx creditsaddr
+698A  8C719F                  cmpx #creditsgfxend-16
+698D  2719                    beq skipscreditsreset
+698F  BD6941                  jsr copycredits
+6992  BD6933                  jsr patchcredits
+6995  BE0033                  ldx creditsaddr
+6998  308810                  leax 16,x
+699B  BF0033                  stx creditsaddr
+699E  BE0033                  ldx creditsaddr
+69A1  8C719F                  cmpx #creditsgfxend-16
+69A4  2702                    beq skipscreditsreset
+69A6  2006                    bra creditsend
+69A8                  skipscreditsreset
+69A8  8E719F                  ldx #creditsgfxend-16
+69AB  BF0033                  stx creditsaddr
+69AE                  creditsend
+69AE  39                      rts
+                      
+69AF                  creditsgfx
+69AF  0A82A0A82A802A2A8A202AA0A8288000280A28A22800A0280A202A228A288000280A28A22800A0280A202A2280288000280A28A22A00A02A02802820A80A0000280A28A22800A2280A2028200A288000280A28A22800A2280A2028228A2880000A82A0A82A882A280A222820A8288000000000000008000000020000000000000000000000002FF0000000000000000000000000BFFCBC3CBFF00BC02FF0BCBC000000000BC00000BCBC2FF0BCBCBCBC000000000BC02FF0BCBCBCBCBC00BCBC000000000BC0BCBCBFF0BFFCBC00BFFC000000000BC0BCBCBCBCBCBCBC00BCBC000000000BC0BCBCBCBCBCBCBCBCBCBC000000000BC02FF0BFF0BCBC2FF0BCBC000000000000000000000000000000000A82A0282A0A08AA0A82A00000000000280A28A2288A0828280A280000000000280A28A2288A0828280A000000000000280A28AA2A0AA8282802A00000000000288AA0A2280A08282800280000000000288A28A2280A0828280A2800000000000A8A28A2280A08AA0A82A000000000000000000000000000000000000000000000BFF00BC02FF02FF02FF02FF0BCBC0000BCBC2FF0BCBCBCBCBCBCBCBCBFBC0000BCBCBCBCBC00BC00BCBCBCBCBFFC0000BFF0BFFCBC00BC00BCBCBCBCBFFCBF00BFC0BCBCBC00BC00BCBCBCBCBEFC0000BEF0BCBCBCBCBCBCBCBCBCBCBCBC0000BCBCBCBC2FF02FF02FF02FF0BCBC000000000000000000000000000000000000000000BCBC2FF02FF0BC00BFFCBFFC00000000BCBC0BC0BCBCBC00BC000BC000000000BCBC0BC0BCBCBC00BC000BC000000000BCBC0BC0BCBCBC00BFC00BC000000000BCBC0BC0BCBCBC00BC000BC0000000002FF00BC0BCBCBC00BC000BC0000000000BC02FF02FF0BFFCBFFC0BC00000000000000000000000000000000000000000000000000BC0BCBCBFC02FF000000000000000002FF0BFBCBEF0BCBC0000000000000000BCBCBFFCBCBCBCBC0000000000000000BFFCBFFCBCBCBCBC0000000000000000BCBCBEFCBCBCBCBC0000000000000000BCBCBCBCBEF0BCBC0000000000000000BCBCBCBCBFC02FF02AA28A0A82A82A0000000000000000002A228A28A0A0A00000000000000000002A228A2800A0A000000000000000000028228A0A80A0A000000000000000000028228A00A0A0A000000000000000000028228A28A0A0A00000000000000000002820A80A82A82A000000000000000000000000000000000000000000000000002F2F0BFC2F2F0BFC2F0002F02FFF0BFC2FEF02F02F2F02F02F000BFC002F2F2F2FFF02F02F2F02F02F002F2F00BC2F2F2FFF02F02FFF02F02F002FFF02F02F2F2FBF02F02F2F02F02F002F2F0BC02F2F2F2F02F02F2F02F02F002F2F2F002F2F2F2F0BFC2F2F0BFC2FFF2F2F2FFF0BFC000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002822A8000A00A828A2A80028282A0A28282280330A028A28A280CC2828A28A28282280FFCA028A28A283FF2828A28A282822A0FFCA028A28A2A3FF2828A28A282A22803F0A028A28A280FC0AA0A28A282A22803F0A028A28A280FC0280A28A282A22800C0A028A0A8280300280A28A282AA2A8000AA0A80202A80002802A02A000000000000000000000000000000000000000000000000000000000000000002A2A2A2A222A2A2A2A2A2A00A8A8A8A822080820220820082022203C882080202808082A2A082808282A2A3CA820A02022080802220820082028023CA02080202A2A2A2A222A20082A222A0088A88020000000000000000000000000000000002A2A202A2A2A2A2200A8A8A8A8A8A8A822222022220808223C208888A88088202A22202A2A08082A3C2088A8A8A0882020222022280808083C2088A088808820202A2A22222A08080020A88888A888200000000000000000000000000000000000A8A800A0A8A8A8A8A800A8A8A8A8A83C8088F0888080208880F020202088883C80A8F088A0A820A8A0F0202020A8883C8880F088800820A080F0202020888800A88000A0A8A8A888A80020A8208888000000000000000000000000000000002A22222A002A2A2A00A8A8A800A0A8A8082222223C2222203C8080803C88808008222A283C22222A3C80A8803C88A8A8082222223C2222023C8008803C880808082A222A002A222A00A8A8A800A0A8A800000000000000000000000000000000222A2A222A2A2A2A2A2A2A002A2A2A00222222222222222022222A3C222A203C2A22222A2A2A22202A2A2A3C2A2A203C22222208202822222822223C2822203C222A2A0820222A2A2222220022222A00000000000000000000000000000000002A2A2A2A28002A2A2A002A2A2A2A2A0008220822223C2222220022222208223C082A082A223C2A22222A282A2A08223C08280822223C2022220022282208223C08222A222800202A2A002A22222A220000000000000000000000000000000000202A2A2A2A2A2A2A00A8A888A800A8A82022200820222A223C888888880008082022200820222A2A3C888888A8A8A8A820222208202222223C888888880080802A2A2A2A2A2A22220088A8208800A8A800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000         includebin "gfx/creditsgreets.bin"
+71AF                  creditsgfxend
+                      
+                      ;less important vars - i know using a whole byte for a boolean is wasteful - i just cba bitmasking ;)
+71AF                  twistflag       rmb 1
+71B0                  infoflag        rmb 1
+71B1                  sg12flag        rmb 1
+71B2                  scrollflag1     rmb 1
+71B3                  scnrbaseval     rmb 1
+71B4                  sheepflag       rmb 1
+71B5                  creditsflag     rmb 1
+71B6                  sgcolflag       rmb 1
+71B7                  sineflag        rmb 1
+71B8                  titleflag       rmb 1
+71B9                  torusflag       rmb 1
+                      
+71BA                          end start
